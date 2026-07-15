@@ -1,0 +1,8 @@
+{
+  "name": "Remix: NTR Filmography",
+  "description": "The ultimate, next-generation cinematic archive, filmography, and media library for NTR.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

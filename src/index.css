@@ -1,0 +1,222 @@
+@import "tailwindcss";
+
+html, body {
+  background-color: #09090b !important;
+  color-scheme: dark;
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  min-height: 100%;
+}
+
+@layer utilities {
+  /* Dark Theme Claymorphism Pill/Tabs */
+  .clay-tab {
+    background: rgba(24, 24, 27, 0.7);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 
+      0px 6px 14px rgba(0, 0, 0, 0.45),
+      inset 0px 3px 5px rgba(255, 255, 255, 0.08),
+      inset 0px -3px 6px rgba(0, 0, 0, 0.5);
+    transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .clay-tab:hover {
+    border-color: rgba(255, 255, 255, 0.18);
+    box-shadow: 
+      0px 10px 20px rgba(0, 0, 0, 0.6),
+      inset 0px 4px 8px rgba(255, 255, 255, 0.12),
+      inset 0px -4px 8px rgba(0, 0, 0, 0.6);
+  }
+
+  /* Active Amber Claymorphism (Movies) */
+  .clay-tab-active, .clay-tab-movies-active {
+    background: rgba(245, 158, 11, 0.85);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    color: #09090b !important;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    box-shadow: 
+      0px 6px 14px rgba(245, 158, 11, 0.35),
+      inset 0px 3px 4px rgba(255, 255, 255, 0.4),
+      inset 0px -3px 6px rgba(0, 0, 0, 0.25);
+    font-weight: 700;
+  }
+
+  /* Active Emerald Claymorphism (Photos) */
+  .clay-tab-photos-active {
+    background: rgba(16, 185, 129, 0.85);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    color: #09090b !important;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    box-shadow: 
+      0px 6px 14px rgba(16, 185, 129, 0.35),
+      inset 0px 3px 4px rgba(255, 255, 255, 0.4),
+      inset 0px -3px 6px rgba(0, 0, 0, 0.25);
+    font-weight: 700;
+  }
+
+  /* Active Cyan Claymorphism (Video Cuts) */
+  .clay-tab-cuts-active {
+    background: rgba(6, 182, 212, 0.85);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    color: #09090b !important;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    box-shadow: 
+      0px 6px 14px rgba(6, 182, 212, 0.35),
+      inset 0px 3px 4px rgba(255, 255, 255, 0.4),
+      inset 0px -3px 6px rgba(0, 0, 0, 0.25);
+    font-weight: 700;
+  }
+
+  /* Active Rose Claymorphism (Offline Videos) */
+  .clay-tab-offline-active {
+    background: rgba(244, 63, 94, 0.85);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    color: #09090b !important;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    box-shadow: 
+      0px 6px 14px rgba(244, 63, 94, 0.35),
+      inset 0px 3px 4px rgba(255, 255, 255, 0.4),
+      inset 0px -3px 6px rgba(0, 0, 0, 0.25);
+    font-weight: 700;
+  }
+
+  /* Dark Clay Cards */
+  .clay-card {
+    background: rgba(9, 9, 11, 0.25);
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 24px;
+    box-shadow: 
+      0px 12px 24px rgba(0, 0, 0, 0.35),
+      inset 0px 2px 4px rgba(255, 255, 255, 0.05),
+      inset 0px -4px 8px rgba(0, 0, 0, 0.2);
+  }
+
+  /* Liquid Glass Cursor Tracking container */
+  .liquid-glass-container {
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* Liquid Glass lens reflection */
+  .liquid-glass-lens {
+    position: absolute;
+    width: 140px;
+    height: 140px;
+    background: radial-gradient(circle, rgba(255, 255, 255, 0.15) 0%, rgba(255, 255, 255, 0) 70%);
+    border-radius: 50%;
+    pointer-events: none;
+    transform: translate(-50%, -50%);
+    z-index: 5;
+    mix-blend-mode: overlay;
+    transition: opacity 0.3s ease;
+    opacity: 0;
+  }
+
+  .liquid-glass-container:hover .liquid-glass-lens {
+    opacity: 1;
+  }
+
+  /* Liquid Glass theme for list items */
+  .liquid-glass-song {
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.03) 0%, rgba(255, 255, 255, 0.01) 100%);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    box-shadow: 
+      0 8px 32px 0 rgba(0, 0, 0, 0.4),
+      inset 0 1px 1px rgba(255, 255, 255, 0.1),
+      inset 0 -1px 1px rgba(0, 0, 0, 0.2);
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+    transition: all 0.4s cubic-bezier(0.25, 1, 0.5, 1);
+  }
+
+  .liquid-glass-song:hover {
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.06) 0%, rgba(255, 255, 255, 0.02) 100%);
+    border-color: rgba(255, 255, 255, 0.15);
+    box-shadow: 
+      0 12px 40px 0 rgba(0, 0, 0, 0.5),
+      inset 0 1px 2px rgba(255, 255, 255, 0.2),
+      0 0 15px rgba(245, 158, 11, 0.1);
+    transform: translateY(-2px);
+  }
+
+  .liquid-glass-song-selected {
+    background: linear-gradient(135deg, rgba(245, 158, 11, 0.15) 0%, rgba(245, 158, 11, 0.04) 100%);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(245, 158, 11, 0.45);
+    box-shadow: 
+      0 10px 30px 0 rgba(245, 158, 11, 0.15),
+      inset 0 1px 2px rgba(255, 255, 255, 0.2),
+      inset 0 -1px 8px rgba(245, 158, 11, 0.1);
+    transform: scale(1.01) translateY(-1px);
+  }
+
+  /* Highly realistic audio visualizer animations */
+  @keyframes eq-flow-1 {
+    0%, 100% { height: 15%; }
+    25% { height: 85%; }
+    50% { height: 45%; }
+    75% { height: 95%; }
+  }
+  @keyframes eq-flow-2 {
+    0%, 100% { height: 35%; }
+    30% { height: 95%; }
+    60% { height: 15%; }
+    80% { height: 75%; }
+  }
+  @keyframes eq-flow-3 {
+    0%, 100% { height: 20%; }
+    20% { height: 65%; }
+    45% { height: 95%; }
+    70% { height: 30%; }
+  }
+  @keyframes eq-flow-4 {
+    0%, 100% { height: 45%; }
+    25% { height: 15%; }
+    50% { height: 85%; }
+    75% { height: 55%; }
+  }
+  @keyframes eq-flow-5 {
+    0%, 100% { height: 10%; }
+    35% { height: 75%; }
+    55% { height: 25%; }
+    80% { height: 90%; }
+  }
+
+  .animate-eq-1 { animation: eq-flow-1 1.2s ease-in-out infinite; }
+  .animate-eq-2 { animation: eq-flow-2 1.0s ease-in-out infinite; }
+  .animate-eq-3 { animation: eq-flow-3 1.4s ease-in-out infinite; }
+  .animate-eq-4 { animation: eq-flow-4 1.1s ease-in-out infinite; }
+  .animate-eq-5 { animation: eq-flow-5 1.3s ease-in-out infinite; }
+
+  /* Premium running tiger keyframes */
+  @keyframes tiger-stride {
+    0%, 100% {
+      transform: translateY(0) rotate(-3deg) scaleX(1);
+    }
+    25% {
+      transform: translateY(-3px) rotate(1deg) scaleX(1.03);
+    }
+    50% {
+      transform: translateY(-6px) rotate(4deg) scaleX(1);
+    }
+    75% {
+      transform: translateY(-2px) rotate(-1deg) scaleX(0.98);
+    }
+  }
+
+  .animate-tiger-stride {
+    animation: tiger-stride 0.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  }
+}
+
