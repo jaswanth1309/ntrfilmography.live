@@ -718,70 +718,52 @@ api.get("/media/download", async (c) => {
   }
 
   const safeFilename = sanitizeFilename(filename);
+  const rangeHeader = c.req.header("range") || c.req.header("Range");
 
-  // 1. Production-Grade S3 Presigned URL Redirection with Dynamic Content-Disposition Override
-  const endpoint = getEnvVal(c, ["CLOUDFLARE_R2_ENDPOINT"]);
-  const accessKeyId = getEnvVal(c, ["CLOUDFLARE_R2_ACCESS_KEY_ID"]);
-  const secretAccessKey = getEnvVal(c, ["CLOUDFLARE_R2_SECRET_ACCESS_KEY"]);
-  const bucketName = getEnvVal(c, ["CLOUDFLARE_R2_BUCKET_NAME"]);
-
-  if (activeKey && !isMockId && endpoint && accessKeyId && secretAccessKey && bucketName) {
-    try {
-      console.log(`[DOWNLOAD] Generating presigned R2 S3 URL with attachment override for: "${activeKey}"`);
-      const { S3Client, GetObjectCommand } = await import("@aws-sdk/client-s3");
-      const { getSignedUrl } = await import("@aws-sdk/s3-request-presigner");
-
-      const s3Client = new S3Client({
-        region: "auto",
-        endpoint: endpoint,
-        credentials: {
-          accessKeyId,
-          secretAccessKey,
-        },
-      });
-
-      const sanitizedAttachmentFilename = safeFilename.replace(/[^a-zA-Z0-9._-]/g, "_");
-      const utf8Filename = encodeURIComponent(safeFilename);
-      const contentDispositionValue = `attachment; filename="${sanitizedAttachmentFilename}"; filename*=UTF-8''${utf8Filename}`;
-
-      const command = new GetObjectCommand({
-        Bucket: bucketName,
-        Key: activeKey,
-        ResponseContentDisposition: contentDispositionValue,
-      });
-
-      const signedUrl = await getSignedUrl(s3Client, command, { expiresIn: 3600 });
-      console.log(`[DOWNLOAD] Presigned URL generated successfully. Redirecting browser to: ${signedUrl.substring(0, 100)}...`);
-      return c.redirect(signedUrl, 307);
-    } catch (s3Err: any) {
-      console.error("[DOWNLOAD] Failed to generate S3 presigned URL download link:", s3Err.message);
-    }
-  }
-
-  // 2. Fallback: 100% Native Cloudflare R2 Streaming Download via Direct Bucket Binding
+  // 100% Native Cloudflare R2 Streaming Download
   const bucket = (c.env as any)?.MY_BUCKET;
   if (activeKey && bucket) {
     try {
-      console.log(`[DOWNLOAD] Falling back to direct native R2 get stream for key: "${activeKey}"`);
-      const file = await (bucket as any).get(activeKey);
+      console.log(`[DOWNLOAD PROXY] Direct native R2 Get request for key: "${activeKey}" with Range: ${rangeHeader || "None"}`);
+      let file: any = null;
+      if (rangeHeader) {
+        try {
+          file = await (bucket as any).get(activeKey, { range: rangeHeader });
+        } catch (rangeErr) {
+          console.warn("[DOWNLOAD PROXY] R2 get with range failed, trying full get:", rangeErr);
+          file = await (bucket as any).get(activeKey);
+        }
+      } else {
+        file = await (bucket as any).get(activeKey);
+      }
+
       if (file) {
         const contentType = file.httpMetadata?.contentType || "application/octet-stream";
-        const contentLength = file.size;
+        const totalSize = file.size;
 
         const utf8Filename = encodeURIComponent(safeFilename);
         c.header("Content-Disposition", `attachment; filename="${safeFilename.replace(/[^a-zA-Z0-9._-]/g, "_")}"; filename*=UTF-8''${utf8Filename}`);
         c.header("Content-Type", contentType);
-        if (contentLength) {
-          c.header("Content-Length", String(contentLength));
+        c.header("Accept-Ranges", "bytes");
+
+        if (file.range) {
+          const start = file.range.offset;
+          const end = file.range.offset + file.range.length - 1;
+          c.header("Content-Range", `bytes ${start}-${end}/${totalSize}`);
+          c.header("Content-Length", String(file.range.length));
+          c.status(206);
+        } else {
+          c.header("Content-Length", String(totalSize));
+          c.status(200);
         }
         return c.body(file.body);
       }
     } catch (err: any) {
-      console.warn(`[DOWNLOAD] Direct R2 get stream failed for key "${activeKey}". Fallback to URL proxy. Error:`, err.message);
+      console.warn(`[DOWNLOAD PROXY] Native R2 get failed for key "${activeKey}". Fallback to URL proxy. Error:`, err.message);
     }
   }
 
-  // 3. Fallback: Proxy stream via URL (SSRF guarded proxying) or CDN Redirect
+  // Fallback to proxy stream via URL (SSRF guarded proxying)
   let targetUrl = fileUrl;
   if (!targetUrl && activeKey) {
     targetUrl = `${publicUrl}/${activeKey}`;
@@ -789,19 +771,6 @@ api.get("/media/download", async (c) => {
 
   if (!targetUrl) {
     return c.json({ error: "Missing url or key parameter", code: "BAD_REQUEST" }, 400);
-  }
-
-  const isVideoOrLarge = safeFilename.toLowerCase().endsWith('.mp4') || 
-                         safeFilename.toLowerCase().endsWith('.mkv') || 
-                         safeFilename.toLowerCase().endsWith('.avi') || 
-                         safeFilename.toLowerCase().endsWith('.webm') || 
-                         safeFilename.toLowerCase().endsWith('.mov') ||
-                         safeFilename.toLowerCase().endsWith('.zip') ||
-                         (activeKey && (activeKey.includes('Videos/') || activeKey.includes('VideoCuts/') || activeKey.includes('Movies/')));
-
-  if (isVideoOrLarge) {
-    console.log(`[DOWNLOAD] Redirecting large file/video to CDN directly as final fallback: ${targetUrl}`);
-    return c.redirect(targetUrl, 307);
   }
 
   if (!isUrlSafeAndAllowed(targetUrl, c)) {
@@ -812,23 +781,35 @@ api.get("/media/download", async (c) => {
   }
 
   const encodedTargetUrl = targetUrl.startsWith("http") ? encodeURI(decodeURI(targetUrl)) : targetUrl;
-  console.log(`Streaming proxy download request: ${encodedTargetUrl.substring(0, 100)}... -> ${safeFilename}`);
+  console.log(`Streaming proxy download request: ${encodedTargetUrl.substring(0, 100)}... -> ${safeFilename} with Range: ${rangeHeader || "None"}`);
 
-  const response = await fetch(encodedTargetUrl);
-  if (!response.ok) {
+  const fetchHeaders: Record<string, string> = {};
+  if (rangeHeader) {
+    fetchHeaders["Range"] = rangeHeader;
+  }
+
+  const response = await fetch(encodedTargetUrl, { headers: fetchHeaders });
+  if (!response.ok && response.status !== 206) {
     return c.json({ error: `Failed to fetch original file: ${response.status} ${response.statusText}` }, 500);
   }
 
   const contentType = response.headers.get("content-type") || "application/octet-stream";
   const contentLength = response.headers.get("content-length");
+  const contentRange = response.headers.get("content-range");
 
   const utf8Filename = encodeURIComponent(safeFilename);
   c.header("Content-Disposition", `attachment; filename="${safeFilename.replace(/[^a-zA-Z0-9._-]/g, "_")}"; filename*=UTF-8''${utf8Filename}`);
   c.header("Content-Type", contentType);
+  c.header("Accept-Ranges", "bytes");
+
+  if (contentRange) {
+    c.header("Content-Range", contentRange);
+  }
   if (contentLength) {
     c.header("Content-Length", contentLength);
   }
 
+  c.status(response.status as any);
   return c.body(response.body);
 });
 

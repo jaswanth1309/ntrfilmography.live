@@ -136,6 +136,7 @@ export default function App() {
   const [isSelectMode, setIsSelectMode] = useState(false);
   const [selectedItems, setSelectedItems] = useState<any[]>([]);
   const wasPlayingAudioBeforeVideoRef = useRef(false);
+  const recentlyDownloadedRef = useRef<Set<string>>(new Set());
 
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' ? window.innerWidth < 768 : false);
 
@@ -2115,21 +2116,37 @@ export default function App() {
       filename = filename.replace(/[^a-zA-Z0-9._-]/g, "_");
     }
 
-    showToast('Download starting. Streaming directly from storage...', 'info');
+    // Prevent duplicate downloads from repeated rapid clicks (within 3 seconds)
+    const downloadKey = `${finalUrl}_${filename}`;
+    if (recentlyDownloadedRef.current.has(downloadKey)) {
+      showToast('Download already in progress...', 'info');
+      return;
+    }
+    recentlyDownloadedRef.current.add(downloadKey);
+    setTimeout(() => {
+      recentlyDownloadedRef.current.delete(downloadKey);
+    }, 3000);
+
+    showToast('Download started. Preparing your file...', 'info');
     
     try {
-      // Trigger native download by navigating to our same-origin backend redirector.
-      // The backend generates S3 presigned URLs with 'Content-Disposition: attachment' or streams natively.
-      // This immediately registers Chrome's native download dialog without memory buffering or new tabs.
-      const downloadEndpoint = `${API_BASE_URL}/api/v1/media/download?url=${encodeURIComponent(finalUrl)}&key=${encodeURIComponent(itemKey || '')}&filename=${encodeURIComponent(filename)}`;
+      // Point directly to our streaming download proxy endpoint
+      const downloadUrl = `${API_BASE_URL}/api/v1/media/download?url=${encodeURIComponent(finalUrl)}&key=${encodeURIComponent(itemKey || '')}&filename=${encodeURIComponent(filename)}`;
       
       const link = document.createElement('a');
-      link.href = downloadEndpoint;
+      link.href = downloadUrl;
+      // Force download attribute
+      link.setAttribute('download', filename);
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
+      
+      // Since it's a native streaming trigger, the browser manages the download. We can show a success toast.
+      setTimeout(() => {
+        showToast('Download initiated! Check your browser downloads.', 'success');
+      }, 1500);
     } catch (err) {
-      console.warn('[SINGLE DOWNLOAD] Same-origin download trigger failed, falling back to direct window.open:', err);
+      console.warn('[SINGLE DOWNLOAD] Native proxy download trigger failed, falling back to direct link:', err);
       showToast('Opening direct stream link...', 'info');
       
       // Fallback: Open finalUrl directly in a new window/tab to bypass proxy entirely
