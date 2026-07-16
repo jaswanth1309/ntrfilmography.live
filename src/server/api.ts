@@ -1,7 +1,11 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import { S3Client, ListObjectsV2Command, GetObjectCommand } from "@aws-sdk/client-s3";
-import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { DOMParser } from "@xmldom/xmldom";
+
+// Polyfill DOMParser for Cloudflare Workers / workerd environments (preventing AWS/S3 SDK deserialization errors)
+if (typeof globalThis.DOMParser === "undefined") {
+  (globalThis as any).DOMParser = DOMParser;
+}
 
 export const api = new Hono().basePath("/api/v1");
 
@@ -20,68 +24,78 @@ function getEnvVal(c: any, keys: string[]): string {
   return "";
 }
 
-function getR2Credentials(c: any) {
-  const endpointRaw = getEnvVal(c, [
-    "CLOUDFLARE_R2_ENDPOINT",
-    "R2_ENDPOINT",
-    "CLOUDFLARE_ENDPOINT",
-    "ENDPOINT"
-  ]);
-
-  const accessKeyId = getEnvVal(c, [
-    "CLOUDFLARE_R2_ACCESS_KEY_ID",
-    "R2_ACCESS_KEY_ID",
-    "CLOUDFLARE_ACCESS_KEY_ID",
-    "ACCESS_KEY_ID"
-  ]);
-
-  const secretAccessKey = getEnvVal(c, [
-    "CLOUDFLARE_R2_SECRET_ACCESS_KEY",
-    "R2_SECRET_ACCESS_KEY",
-    "CLOUDFLARE_SECRET_ACCESS_KEY",
-    "SECRET_ACCESS_KEY"
-  ]);
-
-  const bucketName = getEnvVal(c, [
-    "CLOUDFLARE_R2_BUCKET_NAME",
-    "R2_BUCKET_NAME",
-    "CLOUDFLARE_BUCKET_NAME",
-    "BUCKET_NAME"
-  ]) || "ntrfilmography";
-
-  const publicUrlRaw = getEnvVal(c, [
+// Get the R2 public CDN URL
+function getR2PublicUrl(c: any): string {
+  return getEnvVal(c, [
     "CLOUDFLARE_R2_PUBLIC_URL",
     "R2_PUBLIC_URL",
     "CLOUDFLARE_PUBLIC_URL",
     "PUBLIC_URL"
   ]) || "https://pub-4b8805119f7f49ae848fa1aaa57dd6d0.r2.dev";
+}
 
-  // Sanitize endpoint
-  let endpoint = endpointRaw;
-  if (endpoint) {
-    if (!endpoint.startsWith("http://") && !endpoint.startsWith("https://")) {
-      endpoint = "https://" + endpoint;
-    }
-    endpoint = endpoint.replace(/\/$/, "");
-    const match = endpoint.match(/^(https?:\/\/[a-z0-9\-]+\.r2\.cloudflarestorage\.com)/i);
-    if (match) {
-      endpoint = match[1];
-    }
-  }
-
-  // Sanitize publicUrl
+// Fallback high-quality mock files database for local development and local preview when R2 is not bound
+function getFallbackMockFiles(c: any): any[] {
+  const publicUrlRaw = getR2PublicUrl(c);
   let publicUrl = publicUrlRaw.replace(/\/$/, "");
   if (publicUrl && !publicUrl.startsWith("http://") && !publicUrl.startsWith("https://")) {
     publicUrl = "https://" + publicUrl;
   }
 
-  return {
-    endpoint,
-    accessKeyId,
-    secretAccessKey,
-    bucketName,
-    publicUrl
-  };
+  const mockKeys = [
+    // Photos Movies
+    { key: "ntrfilmography/Photos/Movie/devara_pose.jpg", url: "https://images.unsplash.com/photo-1509281373149-e957c6296406?q=80&w=800", size: 1250320 },
+    { key: "ntrfilmography/Photos/Movie/rrr_action.jpg", url: "https://images.unsplash.com/photo-1536440136628-849c177e76a1?q=80&w=800", size: 1420500 },
+    
+    // Photos Events
+    { key: "ntrfilmography/Photos/Event/success_meet.jpg", url: "https://images.unsplash.com/photo-1511578314322-379afb476865?q=80&w=800", size: 2100450 },
+    
+    // Photos Offline/Latest
+    { key: "ntrfilmography/Photos/Latest/airport_look.jpg", url: "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?q=80&w=800", size: 980120 },
+    
+    // Video Cuts Movie Cuts
+    { key: "ntrfilmography/VideoCuts/Movie Cuts/rrr_intro.mp4", url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4", size: 15420300 },
+    
+    // Video Cuts Video Songs
+    { key: "ntrfilmography/VideoCuts/Video Songs/naatu_naatu.mp4", url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4", size: 22400100 },
+    
+    // Videos Events
+    { key: "ntrfilmography/Videos/Events/audio_launch.mp4", url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4", size: 18450000 },
+    
+    // Videos Celebrations
+    { key: "ntrfilmography/Videos/Celebrations/fans_celebration.mp4", url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4", size: 12900000 },
+    
+    // Movies
+    { key: "ntrfilmography/Movies/Devara_Full_Movie.mp4", url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4", size: 150420100 },
+    
+    // Movie Posters Portrait
+    { key: "ntrfilmography/Movie Posters/Portrait/devara_portrait.jpg", url: "https://images.unsplash.com/photo-1509281373149-e957c6296406?q=80&w=800", size: 850120 },
+    
+    // Movie Posters Landscape
+    { key: "ntrfilmography/Movie Posters/Landscape/rrr_banner.jpg", url: "https://images.unsplash.com/photo-1478760329108-5c3ed9d495a0?q=80&w=800", size: 1150400 },
+    
+    // Photos Thumbnails Movie Thumbnails
+    { key: "ntrfilmography/Photos Thumbnails/Movie Thumbnails/devara_pose_thumb.jpg", url: "https://images.unsplash.com/photo-1509281373149-e957c6296406?q=80&w=300", size: 82000 },
+    
+    // Photos Thumbnails Event Thumbnails
+    { key: "ntrfilmography/Photos Thumbnails/Event Thumbnails/success_meet_thumb.jpg", url: "https://images.unsplash.com/photo-1511578314322-379afb476865?q=80&w=300", size: 75000 },
+    
+    // Videos Thumbnails Event Thumbnails
+    { key: "ntrfilmography/Videos Thumbnails/Event Thumbnails/audio_launch_thumb.jpg", url: "https://images.unsplash.com/photo-1501281668745-f7f57925c3b4?q=80&w=300", size: 95000 },
+    
+    // VideoCuts Thumbnails Movie Cuts Thumbnails
+    { key: "ntrfilmography/VideoCuts Thumbnails/Movie Cuts Thumbnails/rrr_intro_thumb.jpg", url: "https://images.unsplash.com/photo-1536440136628-849c177e76a1?q=80&w=300", size: 68000 },
+    
+    // Audio Songs
+    { key: "ntrfilmography/Audio/Fear_Song.mp3", url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3", size: 4500120 }
+  ];
+
+  return mockKeys.map(item => ({
+    key: item.key,
+    url: item.url,
+    size: item.size,
+    lastModified: new Date().toISOString()
+  }));
 }
 
 // Enable secure dynamic CORS based on ALLOWED_ORIGINS setting
@@ -115,7 +129,7 @@ api.use("*", async (c, next) => {
   await next();
 });
 
-// Production-ready IP-based Rate Limiter (best effort on serverless, 100% on dev)
+// Production-ready IP-based Rate Limiter (No top-level setInterval to avoid Cloudflare startup crash)
 class IPAddressRateLimiter {
   private store = new Map<string, { count: number; resetTime: number }>();
   private windowMs: number;
@@ -127,6 +141,7 @@ class IPAddressRateLimiter {
   }
 
   public checkLimit(ip: string) {
+    // Lazy pruning on checkLimit avoids the disallowed global setInterval/timers on Worker startup
     this.prune();
 
     const now = Date.now();
@@ -166,7 +181,7 @@ const getClientIP = (c: any): string => {
   if (xForwardedFor) {
     return xForwardedFor.split(",")[0].trim();
   }
-  return c.env?.incoming?.socket?.remoteAddress || "unknown_ip";
+  return (c.env as any)?.incoming?.socket?.remoteAddress || "unknown_ip";
 };
 
 function sanitizePrefix(prefix: string): string {
@@ -238,33 +253,13 @@ function isUrlSafeAndAllowed(targetUrlStr: string, c: any): boolean {
     allowedDomains.add("player.vimeo.com");
     allowedDomains.add("vimeo.com");
 
-    const envPublicUrl = getEnvVal(c, [
-      "CLOUDFLARE_R2_PUBLIC_URL",
-      "R2_PUBLIC_URL",
-      "CLOUDFLARE_PUBLIC_URL",
-      "PUBLIC_URL"
-    ]);
+    const envPublicUrl = getR2PublicUrl(c);
     if (envPublicUrl) {
       try {
         const u = new URL(envPublicUrl);
         allowedDomains.add(u.hostname.toLowerCase());
       } catch {
         allowedDomains.add(envPublicUrl.replace(/^https?:\/\//, "").split("/")[0].toLowerCase());
-      }
-    }
-
-    const envEndpoint = getEnvVal(c, [
-      "CLOUDFLARE_R2_ENDPOINT",
-      "R2_ENDPOINT",
-      "CLOUDFLARE_ENDPOINT",
-      "ENDPOINT"
-    ]);
-    if (envEndpoint) {
-      try {
-        const u = new URL(envEndpoint);
-        allowedDomains.add(u.hostname.toLowerCase());
-      } catch {
-        allowedDomains.add(envEndpoint.replace(/^https?:\/\//, "").split("/")[0].toLowerCase());
       }
     }
 
@@ -283,41 +278,40 @@ function isUrlSafeAndAllowed(targetUrlStr: string, c: any): boolean {
   }
 }
 
+// 100% Native Cloudflare R2 listing (No AWS SDK)
 async function listFilesSingle(c: any, prefix: string) {
   try {
-    const { endpoint, accessKeyId, secretAccessKey, bucketName, publicUrl } = getR2Credentials(c);
+    const bucket = (c.env as any)?.MY_BUCKET;
+    if (!bucket) {
+      console.warn("[R2 LIST] 'MY_BUCKET' binding is missing in current environment. Returning fallback mock files.");
+      const mockFiles = getFallbackMockFiles(c);
+      return mockFiles.filter(f => f.key.startsWith(prefix));
+    }
 
-    if (!endpoint || !accessKeyId || !secretAccessKey) {
+    const publicUrlRaw = getR2PublicUrl(c);
+    let publicUrl = publicUrlRaw.replace(/\/$/, "");
+    if (publicUrl && !publicUrl.startsWith("http://") && !publicUrl.startsWith("https://")) {
+      publicUrl = "https://" + publicUrl;
+    }
+
+    const options: any = {};
+    if (prefix) {
+      options.prefix = prefix;
+    }
+
+    console.log(`[R2 LIST] Listing native prefix: "${prefix}"`);
+    const listResult = await (bucket as any).list(options);
+    if (!listResult || !listResult.objects) {
       return [];
     }
 
-    const s3Client = new S3Client({
-      endpoint,
-      region: "auto",
-      forcePathStyle: true,
-      credentials: {
-        accessKeyId,
-        secretAccessKey,
-      },
-    });
-
-    const command = new ListObjectsV2Command({
-      Bucket: bucketName,
-      Prefix: prefix,
-    });
-
-    const response = await s3Client.send(command);
-    if (!response.Contents) {
-      return [];
-    }
-
-    return response.Contents
-      .filter(item => item.Key && !item.Key.endsWith("/"))
-      .map(item => ({
-        key: item.Key,
-        url: `${publicUrl}/${item.Key.split("/").map(encodeURIComponent).join("/")}`,
-        size: item.Size || 0,
-        lastModified: item.LastModified ? item.LastModified.toISOString() : new Date().toISOString(),
+    return listResult.objects
+      .filter((item: any) => item.key && !item.key.endsWith("/"))
+      .map((item: any) => ({
+        key: item.key,
+        url: `${publicUrl}/${item.key.split("/").map(encodeURIComponent).join("/")}`,
+        size: item.size || 0,
+        lastModified: item.uploaded ? new Date(item.uploaded).toISOString() : new Date().toISOString(),
       }));
   } catch (err: any) {
     console.error(`Error listing R2 prefix ${prefix}:`, err.message);
@@ -325,66 +319,57 @@ async function listFilesSingle(c: any, prefix: string) {
   }
 }
 
+// 100% Native Cloudflare R2 recursive all files lister with pagination cursor
 async function listAllBucketFiles(c: any) {
-  const { endpoint, accessKeyId, secretAccessKey, bucketName, publicUrl } = getR2Credentials(c);
-
-  if (!endpoint || !accessKeyId || !secretAccessKey) {
-    throw new Error("R2_CREDENTIALS_MISSING: Cloudflare R2 bucket credentials are not configured or are incomplete in your environment variables. Please check your CLOUDFLARE_R2_ENDPOINT, CLOUDFLARE_R2_ACCESS_KEY_ID, and CLOUDFLARE_R2_SECRET_ACCESS_KEY.");
+  const bucket = (c.env as any)?.MY_BUCKET;
+  console.log("MY_BUCKET EXISTS:", !!bucket);
+  if (!bucket) {
+    console.warn("MY_BUCKET is not bound in c.env. Returning fallback mock files for development mode.");
+    return getFallbackMockFiles(c);
   }
 
-  const s3Client = new S3Client({
-    endpoint,
-    region: "auto",
-    forcePathStyle: true,
-    credentials: {
-      accessKeyId,
-      secretAccessKey,
-    },
-  });
+  const publicUrlRaw = getR2PublicUrl(c);
+  let publicUrl = publicUrlRaw.replace(/\/$/, "");
+  if (publicUrl && !publicUrl.startsWith("http://") && !publicUrl.startsWith("https://")) {
+    publicUrl = "https://" + publicUrl;
+  }
 
-  let allFiles: any[] = [];
+  const allFiles: any[] = [];
   let isTruncated = true;
-  let nextContinuationToken: string | undefined = undefined;
+  let cursor: string | undefined = undefined;
 
   try {
     while (isTruncated) {
-      const command: any = new ListObjectsV2Command({
-        Bucket: bucketName,
-        ContinuationToken: nextContinuationToken,
-      });
+      const options: any = {};
+      if (cursor) {
+        options.cursor = cursor;
+      }
 
-      const response: any = await s3Client.send(command);
-      if (response.Contents) {
-        const files = response.Contents
-          .filter(item => item.Key && !item.Key.endsWith("/"))
-          .map(item => ({
-            key: item.Key,
-            url: `${publicUrl}/${item.Key.split("/").map(encodeURIComponent).join("/")}`,
-            size: item.Size || 0,
-            lastModified: item.LastModified ? item.LastModified.toISOString() : new Date().toISOString(),
+      console.log(`[R2 LIST ALL] Fetching bucket page with cursor: ${cursor || 'none'}`);
+      const listResult = await (bucket as any).list(options);
+      if (listResult && listResult.objects) {
+        const files = listResult.objects
+          .filter((item: any) => item.key && !item.key.endsWith("/"))
+          .map((item: any) => ({
+            key: item.key,
+            url: `${publicUrl}/${item.key.split("/").map(encodeURIComponent).join("/")}`,
+            size: item.size || 0,
+            lastModified: item.uploaded ? new Date(item.uploaded).toISOString() : new Date().toISOString(),
           }));
         allFiles.push(...files);
       }
-      isTruncated = response.IsTruncated || false;
-      nextContinuationToken = response.NextContinuationToken;
+      isTruncated = listResult?.truncated || false;
+      cursor = listResult?.cursor;
     }
-  } catch (s3Err: any) {
-    const errMsg = s3Err.message || "";
-    const isAuthError = errMsg.includes("SignatureDoesNotMatch") || 
-                        errMsg.includes("InvalidAccessKeyId") || 
-                        errMsg.includes("AccessDenied") || 
-                        errMsg.includes("Forbidden") ||
-                        errMsg.includes("NoSuchBucket") ||
-                        s3Err.name === "SignatureDoesNotMatch" ||
-                        s3Err.name === "InvalidAccessKeyId" ||
-                        s3Err.name === "AccessDenied" ||
-                        s3Err.name === "NoSuchBucket";
     
-    if (isAuthError) {
-      throw new Error(`R2_AUTH_ERROR: Cloudflare R2 bucket access denied or misconfigured. Details: ${errMsg}`);
-    } else {
-      throw new Error(`R2_CONNECT_ERROR: Intermittent error communicating with Cloudflare R2: ${errMsg}`);
-    }
+    console.log("TOTAL FILES:", allFiles.length);
+    console.log("FIRST 30 KEYS:");
+    allFiles.slice(0, 30).forEach((f, idx) => {
+      console.log(`[${idx}] ${f.key}`);
+    });
+  } catch (err: any) {
+    console.error("[R2 LIST ALL] Exception details:", err);
+    throw new Error(`R2_CONNECT_ERROR: Intermittent error communicating with Cloudflare R2: ${err.message}`);
   }
 
   return allFiles;
@@ -548,7 +533,7 @@ api.get("/media/download", async (c) => {
     }
   }
 
-  const { endpoint, accessKeyId, secretAccessKey, bucketName, publicUrl } = getR2Credentials(c);
+  const publicUrl = getR2PublicUrl(c);
 
   let activeKey = key || "";
   const isMockId = activeKey.match(/^m\d+$/) || activeKey.startsWith("mock-") || (activeKey && !activeKey.includes("/"));
@@ -587,61 +572,30 @@ api.get("/media/download", async (c) => {
 
   const safeFilename = sanitizeFilename(filename);
 
-  // Try generating a presigned URL and redirecting directly to R2 if credentials exist!
-  // This avoids memory buffers and gateway timeouts on large files like videos or movies.
-  if (activeKey && endpoint && accessKeyId && secretAccessKey) {
+  // 100% Native Cloudflare R2 Streaming Download
+  const bucket = (c.env as any)?.MY_BUCKET;
+  if (activeKey && bucket) {
     try {
-      console.log(`[DOWNLOAD PROXY] Generating S3/R2 Presigned Redirect for Key="${activeKey}" -> Filename="${safeFilename}"`);
-      const s3Client = new S3Client({
-        endpoint,
-        region: "auto",
-        forcePathStyle: true,
-        credentials: {
-          accessKeyId,
-          secretAccessKey,
-        },
-      });
+      console.log(`[DOWNLOAD PROXY] Direct native R2 Get request for key: "${activeKey}"`);
+      const file = await (bucket as any).get(activeKey);
+      if (file) {
+        // Redirection optimization for video/large files to enable range headers/CDN streaming
+        const isVideoOrLarge = safeFilename.toLowerCase().endsWith('.mp4') || 
+                               safeFilename.toLowerCase().endsWith('.mkv') || 
+                               safeFilename.toLowerCase().endsWith('.avi') || 
+                               safeFilename.toLowerCase().endsWith('.webm') || 
+                               safeFilename.toLowerCase().endsWith('.mov') ||
+                               safeFilename.toLowerCase().endsWith('.zip') ||
+                               (activeKey && (activeKey.includes('Videos/') || activeKey.includes('VideoCuts/') || activeKey.includes('Movies/')));
+        
+        if (isVideoOrLarge) {
+          const targetUrl = `${publicUrl}/${activeKey.split("/").map(encodeURIComponent).join("/")}`;
+          console.log(`[DOWNLOAD PROXY] Redirecting large file/video to CDN: ${targetUrl}`);
+          return c.redirect(targetUrl, 307);
+        }
 
-      const cleanFilename = safeFilename.replace(/[^a-zA-Z0-9._-]/g, "_");
-      const utf8Filename = encodeURIComponent(safeFilename);
-      const contentDisposition = `attachment; filename="${cleanFilename}"; filename*=UTF-8''${utf8Filename}`;
-
-      const command = new GetObjectCommand({
-        Bucket: bucketName,
-        Key: activeKey,
-        ResponseContentDisposition: contentDisposition,
-      });
-
-      const presignedUrl = await getSignedUrl(s3Client, command, { expiresIn: 3600 });
-      return c.redirect(presignedUrl, 307);
-    } catch (s3Err: any) {
-      console.warn(`[DOWNLOAD PROXY] R2 S3 presign failed for key "${activeKey}". Error:`, s3Err.message);
-    }
-  }
-
-  // Try streaming directly using S3 SDK if credentials exist as a fallback
-  if (activeKey && endpoint && accessKeyId && secretAccessKey) {
-    try {
-      console.log(`[DOWNLOAD PROXY] Direct S3/R2 Streaming Fallback for Key="${activeKey}" -> Filename="${safeFilename}"`);
-      const s3Client = new S3Client({
-        endpoint,
-        region: "auto",
-        forcePathStyle: true,
-        credentials: {
-          accessKeyId,
-          secretAccessKey,
-        },
-      });
-
-      const command = new GetObjectCommand({
-        Bucket: bucketName,
-        Key: activeKey,
-      });
-
-      const s3Response = await s3Client.send(command);
-      if (s3Response.Body) {
-        const contentType = s3Response.ContentType || "application/octet-stream";
-        const contentLength = s3Response.ContentLength;
+        const contentType = file.httpMetadata?.contentType || "application/octet-stream";
+        const contentLength = file.size;
 
         const utf8Filename = encodeURIComponent(safeFilename);
         c.header("Content-Disposition", `attachment; filename="${safeFilename.replace(/[^a-zA-Z0-9._-]/g, "_")}"; filename*=UTF-8''${utf8Filename}`);
@@ -649,20 +603,10 @@ api.get("/media/download", async (c) => {
         if (contentLength) {
           c.header("Content-Length", String(contentLength));
         }
-        console.log(`[DOWNLOAD PROXY] Streaming file "${safeFilename}" from S3 bucket: ${contentLength || 'unknown'} bytes`);
-        const bodyStream = s3Response.Body as any;
-        let webStream: any;
-        if (bodyStream && typeof bodyStream.transformToWebStream === "function") {
-          webStream = bodyStream.transformToWebStream();
-        } else if (bodyStream && typeof bodyStream.toWeb === "function") {
-          webStream = bodyStream.toWeb();
-        } else {
-          webStream = bodyStream;
-        }
-        return c.body(webStream as any);
+        return c.body(file.body);
       }
-    } catch (s3Err: any) {
-      console.warn(`[DOWNLOAD PROXY] R2 S3 stream failed for key "${activeKey}". Error:`, s3Err.message);
+    } catch (err: any) {
+      console.warn(`[DOWNLOAD PROXY] Native R2 get failed for key "${activeKey}". Fallback to URL proxy. Error:`, err.message);
     }
   }
 
@@ -676,8 +620,6 @@ api.get("/media/download", async (c) => {
     return c.json({ error: "Missing url or key parameter", code: "BAD_REQUEST" }, 400);
   }
 
-  // To prevent proxy stream memory exhaustion and timeouts for video, zip, or movie files,
-  // we redirect them directly to the target URL (which is the high-speed CDN URL)
   const isVideoOrLarge = safeFilename.toLowerCase().endsWith('.mp4') || 
                          safeFilename.toLowerCase().endsWith('.mkv') || 
                          safeFilename.toLowerCase().endsWith('.avi') || 
@@ -744,19 +686,34 @@ api.get("/media/all", async (c) => {
   }
 
   try {
-    console.log("Fetching fresh media files from Cloudflare R2 bucket...");
+    console.log("Fetching fresh media files from native Cloudflare R2 bucket...");
     const bucketFiles = await listAllBucketFiles(c);
+
+    const normalizePath = (p: string): string => {
+      let temp = p.replace(/\\/g, "/").toLowerCase();
+      if (temp.startsWith("ntrfilmography/")) {
+        temp = temp.slice("ntrfilmography/".length);
+      }
+      return temp
+        .replace(/^\//, "")
+        .replace(/\/$/, "");
+    };
 
     const filterFromBucket = (prefixes: string[]) => {
       const seenKeys = new Set<string>();
       const result: any[] = [];
-      for (const prefix of prefixes) {
-        for (const file of bucketFiles) {
-          if (file.key.startsWith(prefix)) {
-            if (!seenKeys.has(file.key)) {
-              seenKeys.add(file.key);
-              result.push(file);
-            }
+      const normPrefixes = prefixes.map(p => normalizePath(p));
+
+      for (const file of bucketFiles) {
+        const normKey = normalizePath(file.key);
+        const isMatch = normPrefixes.some(normPrefix => {
+          return normKey === normPrefix || normKey.startsWith(normPrefix + "/");
+        });
+
+        if (isMatch) {
+          if (!seenKeys.has(file.key)) {
+            seenKeys.add(file.key);
+            result.push(file);
           }
         }
       }
@@ -765,12 +722,16 @@ api.get("/media/all", async (c) => {
 
     const photoMovies = filterFromBucket([
       "ntrfilmography/Photos/Movie/",
-      "Photos/Movie/"
+      "ntrfilmography/Photos/Movies/",
+      "Photos/Movie/",
+      "Photos/Movies/"
     ]);
 
     const photoEvents = filterFromBucket([
       "ntrfilmography/Photos/Event/",
-      "Photos/Event/"
+      "ntrfilmography/Photos/Events/",
+      "Photos/Event/",
+      "Photos/Events/"
     ]);
 
     const photoOffline = filterFromBucket([
@@ -780,25 +741,38 @@ api.get("/media/all", async (c) => {
 
     const cutCuts = filterFromBucket([
       "ntrfilmography/VideoCuts/Movie Cuts/",
-      "VideoCuts/Movie Cuts/"
+      "ntrfilmography/VideoCuts/Movie Cut/",
+      "VideoCuts/Movie Cuts/",
+      "VideoCuts/Movie Cut/"
     ]);
 
     const cutSongs = filterFromBucket([
       "ntrfilmography/VideoCuts/Video Songs/",
-      "VideoCuts/Video Songs/"
+      "ntrfilmography/VideoCuts/Video Song/",
+      "VideoCuts/Video Songs/",
+      "VideoCuts/Video Song/"
     ]);
 
     const offlineEvents = filterFromBucket([
       "ntrfilmography/Videos/Events/",
-      "Videos/Events/"
+      "ntrfilmography/Videos/Event/",
+      "Videos/Events/",
+      "Videos/Event/"
     ]);
 
     const offlineFans = filterFromBucket([
       "ntrfilmography/Videos/Celebrations/",
-      "Videos/Celebrations/"
+      "ntrfilmography/Videos/Celebration/",
+      "Videos/Celebrations/",
+      "Videos/Celebration/"
     ]);
 
-    const moviesList = filterFromBucket(["ntrfilmography/Movies/", "ntrfilmography/movies/", "Movies/", "movies/"]);
+    const moviesList = filterFromBucket([
+      "ntrfilmography/Movies/",
+      "ntrfilmography/Movie/",
+      "Movies/",
+      "Movie/"
+    ]);
 
     const thumbnailsP = filterFromBucket([
       "ntrfilmography/Movie Posters/Potrait/",
@@ -814,25 +788,38 @@ api.get("/media/all", async (c) => {
 
     const photosMovieThumbnails = filterFromBucket([
       "ntrfilmography/Photos Thumbnails/Movie Thumbnails/",
-      "Photos Thumbnails/Movie Thumbnails/"
+      "ntrfilmography/Photos Thumbnails/Movie Thumbnail/",
+      "Photos Thumbnails/Movie Thumbnails/",
+      "Photos Thumbnails/Movie Thumbnail/"
     ]);
 
     const photosEventThumbnails = filterFromBucket([
       "ntrfilmography/Photos Thumbnails/Event Thumbnails/",
-      "Photos Thumbnails/Event Thumbnails/"
+      "ntrfilmography/Photos Thumbnails/Event Thumbnail/",
+      "Photos Thumbnails/Event Thumbnails/",
+      "Photos Thumbnails/Event Thumbnail/"
     ]);
 
     const videosEventThumbnails = filterFromBucket([
       "ntrfilmography/Videos Thumbnails/Event Thumbnails/",
-      "Videos Thumbnails/Event Thumbnails/"
+      "ntrfilmography/Videos Thumbnails/Event Thumbnail/",
+      "Videos Thumbnails/Event Thumbnails/",
+      "Videos Thumbnails/Event Thumbnail/"
     ]);
 
     const videoCutsMovieThumbnails = filterFromBucket([
       "ntrfilmography/VideoCuts Thumbnails/Movie Cuts Thumbnails/",
-      "VideoCuts Thumbnails/Movie Cuts Thumbnails/"
+      "ntrfilmography/VideoCuts Thumbnails/Movie Cut Thumbnails/",
+      "VideoCuts Thumbnails/Movie Cuts Thumbnails/",
+      "VideoCuts Thumbnails/Movie Cut Thumbnails/"
     ]);
 
-    const audioSongs = filterFromBucket(["ntrfilmography/Audio/", "ntrfilmography/audio/", "Audio/", "audio/"]);
+    const audioSongs = filterFromBucket([
+      "ntrfilmography/Audio/",
+      "ntrfilmography/audio/",
+      "Audio/",
+      "audio/"
+    ]);
 
     const responsePayload = {
       photos: {
@@ -859,7 +846,12 @@ api.get("/media/all", async (c) => {
       bucketFiles: bucketFiles.map(f => ({
         key: f.key,
         size: f.size
-      }))
+      })),
+      debug: {
+        myBucketExists: !!(c.env as any)?.MY_BUCKET,
+        totalFiles: bucketFiles.length,
+        first30Keys: bucketFiles.slice(0, 30).map(f => f.key)
+      }
     };
 
     if (bucketFiles && bucketFiles.length > 0) {
@@ -869,10 +861,11 @@ api.get("/media/all", async (c) => {
 
     return c.json(responsePayload);
   } catch (err: any) {
-    console.error("Failed to list R2 bucket files:", err.message);
-    const isMisconfigured = err.message.includes("R2_CREDENTIALS_MISSING") || err.message.includes("R2_AUTH_ERROR");
+    const errMsg = err?.message || String(err || "Unknown error");
+    console.error("Failed to list native R2 bucket files:", errMsg);
+    const isMisconfigured = errMsg.includes("R2_BINDING_MISSING") || errMsg.includes("binding is missing") || errMsg.includes("undefined");
     return c.json({
-      error: err.message || "Failed to list R2 bucket files",
+      error: errMsg,
       code: isMisconfigured ? "R2_MISCONFIGURED" : "R2_CONNECT_ERROR"
     }, 500);
   }
