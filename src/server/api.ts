@@ -124,11 +124,13 @@ class IPAddressRateLimiter {
   constructor(windowMs: number, maxRequests: number) {
     this.windowMs = windowMs;
     this.maxRequests = maxRequests;
+
+    if (typeof setInterval !== "undefined") {
+      setInterval(() => this.prune(), 5 * 60 * 1000);
+    }
   }
 
   public checkLimit(ip: string) {
-    this.prune();
-    
     const now = Date.now();
     const record = this.store.get(ip);
 
@@ -616,6 +618,53 @@ api.get("/media/download", async (c) => {
       return c.redirect(presignedUrl, 307);
     } catch (s3Err: any) {
       console.warn(`[DOWNLOAD PROXY] R2 S3 presign failed for key "${activeKey}". Error:`, s3Err.message);
+    }
+  }
+
+  // Try streaming directly using S3 SDK if credentials exist as a fallback
+  if (activeKey && endpoint && accessKeyId && secretAccessKey) {
+    try {
+      console.log(`[DOWNLOAD PROXY] Direct S3/R2 Streaming Fallback for Key="${activeKey}" -> Filename="${safeFilename}"`);
+      const s3Client = new S3Client({
+        endpoint,
+        region: "auto",
+        forcePathStyle: true,
+        credentials: {
+          accessKeyId,
+          secretAccessKey,
+        },
+      });
+
+      const command = new GetObjectCommand({
+        Bucket: bucketName,
+        Key: activeKey,
+      });
+
+      const s3Response = await s3Client.send(command);
+      if (s3Response.Body) {
+        const contentType = s3Response.ContentType || "application/octet-stream";
+        const contentLength = s3Response.ContentLength;
+
+        const utf8Filename = encodeURIComponent(safeFilename);
+        c.header("Content-Disposition", `attachment; filename="${safeFilename.replace(/[^a-zA-Z0-9._-]/g, "_")}"; filename*=UTF-8''${utf8Filename}`);
+        c.header("Content-Type", contentType);
+        if (contentLength) {
+          c.header("Content-Length", String(contentLength));
+        }
+        console.log(`[DOWNLOAD PROXY] Streaming file "${safeFilename}" from S3 bucket: ${contentLength || 'unknown'} bytes`);
+        const bodyStream = s3Response.Body as any;
+        let webStream: any;
+        if (bodyStream && typeof bodyStream.transformToWebStream === "function") {
+          webStream = bodyStream.transformToWebStream();
+        } else if (bodyStream && typeof bodyStream.toWeb === "function") {
+          webStream = bodyStream.toWeb();
+        } else {
+          webStream = bodyStream;
+        }
+        return c.body(webStream as any);
+      }
+    } catch (s3Err: any) {
+      console.warn(`[DOWNLOAD PROXY] R2 S3 stream failed for key "${activeKey}". Error:`, s3Err.message);
     }
   }
 

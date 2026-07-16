@@ -1,0 +1,5 @@
+#:schema node_modules/wrangler/config-schema.json
+name = "ntrfilmography"
+pages_build_output_dir = "dist"
+compatibility_date = "2024-04-03"
+compatibility_flags = [ "nodejs_compat" ]
