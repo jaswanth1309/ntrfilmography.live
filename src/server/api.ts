@@ -47,7 +47,7 @@ function getR2Credentials(c: any) {
     "R2_BUCKET_NAME",
     "CLOUDFLARE_BUCKET_NAME",
     "BUCKET_NAME"
-  ]) || "ntrfilmography-media";
+  ]) || "ntrfilmography";
 
   const publicUrlRaw = getEnvVal(c, [
     "CLOUDFLARE_R2_PUBLIC_URL",
@@ -124,13 +124,11 @@ class IPAddressRateLimiter {
   constructor(windowMs: number, maxRequests: number) {
     this.windowMs = windowMs;
     this.maxRequests = maxRequests;
-
-    if (typeof setInterval !== "undefined") {
-      setInterval(() => this.prune(), 5 * 60 * 1000);
-    }
   }
 
   public checkLimit(ip: string) {
+    this.prune();
+
     const now = Date.now();
     const record = this.store.get(ip);
 
