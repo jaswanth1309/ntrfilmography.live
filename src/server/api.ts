@@ -320,6 +320,7 @@ async function listFilesSingle(c: any, prefix: string) {
 }
 
 // 100% Native Cloudflare R2 recursive all files lister with pagination cursor
+// Highly optimized parallel prefix pre-fetching to prevent slow sequential page walks
 async function listAllBucketFiles(c: any) {
   const bucket = (c.env as any)?.MY_BUCKET;
   console.log("MY_BUCKET EXISTS:", !!bucket);
@@ -334,6 +335,76 @@ async function listAllBucketFiles(c: any) {
     publicUrl = "https://" + publicUrl;
   }
 
+  const prefixes = [
+    "ntrfilmography/",
+    "Photos/",
+    "VideoCuts/",
+    "Videos/",
+    "Movies/",
+    "Movie/",
+    "Movie Posters/",
+    "Photos Thumbnails/",
+    "Videos Thumbnails/",
+    "VideoCuts Thumbnails/",
+    "Audio/",
+    "audio/"
+  ];
+
+  try {
+    console.log(`[R2 LIST ALL] Launching parallel pre-fetch for ${prefixes.length} prefixes...`);
+    
+    const fetchPrefixFiles = async (prefix: string): Promise<any[]> => {
+      const prefixFiles: any[] = [];
+      let isTruncated = true;
+      let cursor: string | undefined = undefined;
+      
+      while (isTruncated) {
+        const options: any = { prefix };
+        if (cursor) {
+          options.cursor = cursor;
+        }
+        
+        const listResult = await (bucket as any).list(options);
+        if (listResult && listResult.objects) {
+          const files = listResult.objects
+            .filter((item: any) => item.key && !item.key.endsWith("/"))
+            .map((item: any) => ({
+              key: item.key,
+              url: `${publicUrl}/${item.key.split("/").map(encodeURIComponent).join("/")}`,
+              size: item.size || 0,
+              lastModified: item.uploaded ? new Date(item.uploaded).toISOString() : new Date().toISOString(),
+            }));
+          prefixFiles.push(...files);
+        }
+        isTruncated = listResult?.truncated || false;
+        cursor = listResult?.cursor;
+      }
+      return prefixFiles;
+    };
+
+    // Execute list requests in parallel
+    const results = await Promise.all(prefixes.map(p => fetchPrefixFiles(p)));
+    
+    // Flatten and de-duplicate by key
+    const allFilesMap = new Map<string, any>();
+    for (const fileList of results) {
+      for (const file of fileList) {
+        allFilesMap.set(file.key, file);
+      }
+    }
+    
+    const allFiles = Array.from(allFilesMap.values());
+    console.log(`[R2 LIST ALL] Parallel pre-fetch finished. Found ${allFiles.length} unique files.`);
+    return allFiles;
+  } catch (err: any) {
+    console.warn("[R2 LIST ALL] Parallel pre-fetch failed/partially rejected, falling back to sequential scan:", err.message);
+    return await listAllBucketFilesSequential(c, publicUrl);
+  }
+}
+
+async function listAllBucketFilesSequential(c: any, publicUrl: string) {
+  const bucket = (c.env as any)?.MY_BUCKET;
+  if (!bucket) return [];
   const allFiles: any[] = [];
   let isTruncated = true;
   let cursor: string | undefined = undefined;
@@ -345,7 +416,7 @@ async function listAllBucketFiles(c: any) {
         options.cursor = cursor;
       }
 
-      console.log(`[R2 LIST ALL] Fetching bucket page with cursor: ${cursor || 'none'}`);
+      console.log(`[R2 LIST ALL FALLBACK] Fetching bucket page with cursor: ${cursor || 'none'}`);
       const listResult = await (bucket as any).list(options);
       if (listResult && listResult.objects) {
         const files = listResult.objects
@@ -361,17 +432,10 @@ async function listAllBucketFiles(c: any) {
       isTruncated = listResult?.truncated || false;
       cursor = listResult?.cursor;
     }
-    
-    console.log("TOTAL FILES:", allFiles.length);
-    console.log("FIRST 30 KEYS:");
-    allFiles.slice(0, 30).forEach((f, idx) => {
-      console.log(`[${idx}] ${f.key}`);
-    });
   } catch (err: any) {
-    console.error("[R2 LIST ALL] Exception details:", err);
+    console.error("[R2 LIST ALL FALLBACK] Exception details:", err);
     throw new Error(`R2_CONNECT_ERROR: Intermittent error communicating with Cloudflare R2: ${err.message}`);
   }
-
   return allFiles;
 }
 
@@ -677,12 +741,72 @@ api.get("/media/all", async (c) => {
     }, 429);
   }
 
+  // Admin Rescan Security Check
+  const reqRescan = c.req.query("rescan") === "true";
+  if (reqRescan) {
+    const envToken = (c.env as any)?.ADMIN_RESCAN_TOKEN || (typeof process !== "undefined" && process.env?.ADMIN_RESCAN_TOKEN);
+    let providedToken = c.req.query("token") || c.req.query("admin_token") || c.req.header("X-Admin-Token");
+    const authHeader = c.req.header("Authorization");
+    if (authHeader && authHeader.startsWith("Bearer ")) {
+      providedToken = authHeader.substring(7);
+    }
+
+    if (envToken) {
+      if (!providedToken || providedToken !== envToken) {
+        console.warn(`[RESCAN SECURITY] Unauthorized rescan attempt from IP: ${ip}`);
+        return c.json({
+          error: "Unauthorized: Invalid or missing admin rescan token.",
+          code: "UNAUTHORIZED_RESCAN"
+        }, 401);
+      }
+      console.log(`[RESCAN SECURITY] Authorized rescan requested by IP: ${ip}`);
+    } else {
+      console.warn(`[RESCAN SECURITY WARNING] rescan=true was called but ADMIN_RESCAN_TOKEN is not configured in the environment.`);
+    }
+  }
+
   const bypassCache = c.req.query("rescan") === "true" || c.req.query("bypassCache") === "true";
+  
+  // 1. Check Cloudflare Cache API first (extremely fast CDN/edge response)
+  const hasCacheAPI = typeof globalThis.caches !== "undefined" && typeof (globalThis.caches as any).default !== "undefined";
+  let cacheKey: any = null;
+  let cache: any = null;
+
+  if (hasCacheAPI && !bypassCache) {
+    try {
+      cache = (globalThis.caches as any).default;
+      const cacheUrl = new URL(c.req.url);
+      // Strip rescan and bypassCache query parameters for stable cache key
+      cacheUrl.searchParams.delete("rescan");
+      cacheUrl.searchParams.delete("bypassCache");
+      cacheKey = new Request(cacheUrl.toString(), c.req as any);
+      
+      const cachedResponse = await cache.match(cacheKey);
+      if (cachedResponse) {
+        console.log("[CACHE] Serving /media/all from Cloudflare Edge Cache API");
+        const headers = new Headers(cachedResponse.headers);
+        headers.set("X-Cache", "HIT-EDGE");
+        return new Response(cachedResponse.body, {
+          status: cachedResponse.status,
+          statusText: cachedResponse.statusText,
+          headers
+        });
+      }
+    } catch (cacheErr: any) {
+      console.warn("[CACHE] Failed to read from Cloudflare Edge Cache API:", cacheErr.message);
+    }
+  }
+
   const now = Date.now();
 
+  // 2. Check in-memory fallback cache
   if (cachedMediaAll && (now - cacheTimestamp < CACHE_DURATION) && !bypassCache) {
-    console.log("Serving all aggregated media from server-side cache");
-    return c.json(cachedMediaAll);
+    console.log("Serving all aggregated media from server-side memory cache");
+    const responseHeaders = {
+      "Content-Type": "application/json",
+      "X-Cache": "HIT-MEMORY"
+    };
+    return c.json(cachedMediaAll, 200, responseHeaders);
   }
 
   try {
@@ -857,9 +981,34 @@ api.get("/media/all", async (c) => {
     if (bucketFiles && bucketFiles.length > 0) {
       cachedMediaAll = responsePayload;
       cacheTimestamp = Date.now();
+
+      // Write to Cloudflare Cache API for instant subsequent fetches
+      if (hasCacheAPI && cache && cacheKey) {
+        try {
+          const jsonString = JSON.stringify(responsePayload);
+          const cacheResponse = new Response(jsonString, {
+            headers: {
+              "Content-Type": "application/json",
+              "Cache-Control": "public, max-age=14400, s-maxage=14400" // Cache for 4 hours
+            }
+          });
+          if (c.executionCtx && typeof c.executionCtx.waitUntil === "function") {
+            c.executionCtx.waitUntil(cache.put(cacheKey, cacheResponse));
+          } else {
+            await cache.put(cacheKey, cacheResponse);
+          }
+          console.log("[CACHE] Successfully wrote fresh response payload to Cloudflare Edge Cache API");
+        } catch (putErr: any) {
+          console.warn("[CACHE] Failed to write to Cloudflare Edge Cache API:", putErr.message);
+        }
+      }
     }
 
-    return c.json(responsePayload);
+    const resHeaders = {
+      "Content-Type": "application/json",
+      "X-Cache": "MISS"
+    };
+    return c.json(responsePayload, 200, resHeaders);
   } catch (err: any) {
     const errMsg = err?.message || String(err || "Unknown error");
     console.error("Failed to list native R2 bucket files:", errMsg);

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback, lazy, Suspense } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Film, Image as ImageIcon, Video, Volume2, Play, Pause, RefreshCw, Sparkles, 
@@ -11,12 +11,14 @@ import JSZip from 'jszip';
 
 import { MOVIES, PHOTOS, VIDEOS } from './data/mockData';
 import { Movie, Photo, Video as VideoType, Song } from './types';
-import MediaViewer from './components/MediaViewer';
-import MovieVideoPlayer from './components/MovieVideoPlayer';
 import Footer from './components/Footer';
 import PremiumRunningTiger from './components/PremiumRunningTiger';
 import LazyVideo from './components/LazyVideo';
 import { getOptimizedImageUrl } from './utils/mediaOptim';
+
+// Lazy load heavy interactive components for bundle size and loading speed optimization
+const MediaViewer = lazy(() => import('./components/MediaViewer'));
+const MovieVideoPlayer = lazy(() => import('./components/MovieVideoPlayer'));
 
 // Modular utility imports
 import {
@@ -5772,50 +5774,66 @@ export default function App() {
 
       {/* Cloudflare R2 Full Movie Stream Player Overlay */}
       {movieVideoUrl && (
-        <MovieVideoPlayer 
-          videoUrl={movieVideoUrl}
-          title={selectedMovie?.title || 'R2 Stream'}
-          onClose={() => setMovieVideoUrl(null)}
-        />
+        <Suspense fallback={
+          <div className="fixed inset-0 z-50 bg-[#090a0f]/90 backdrop-blur-md flex flex-col items-center justify-center text-amber-500 font-sans space-y-4">
+            <Loader2 className="w-10 h-10 animate-spin text-amber-500" />
+            <p className="text-sm font-medium tracking-wide text-zinc-400 animate-pulse">Loading High-Definition Video Player...</p>
+          </div>
+        }>
+          <MovieVideoPlayer 
+            videoUrl={movieVideoUrl}
+            title={selectedMovie?.title || 'R2 Stream'}
+            onClose={() => setMovieVideoUrl(null)}
+          />
+        </Suspense>
       )}
 
 
 
       {/* Media Viewer Lightbox modal overlays */}
-      {activeMediaItem && (() => {
-        let onNext: (() => void) | undefined;
-        let onPrev: (() => void) | undefined;
+      {activeMediaItem && (
+        <Suspense fallback={
+          <div className="fixed inset-0 z-50 bg-[#090a0f]/90 backdrop-blur-md flex flex-col items-center justify-center text-amber-500 font-sans space-y-4">
+            <Loader2 className="w-10 h-10 animate-spin text-amber-500" />
+            <p className="text-sm font-medium tracking-wide text-zinc-400 animate-pulse">Loading Media Viewer...</p>
+          </div>
+        }>
+          {(() => {
+            let onNext: (() => void) | undefined;
+            let onPrev: (() => void) | undefined;
 
-        const isPhoto = 'imageUrl' in activeMediaItem && !('type' in activeMediaItem);
-        const currentList = activeMediaList && activeMediaList.length > 0 
-          ? activeMediaList 
-          : (isPhoto ? getActiveGalleryPhotos() : []);
+            const isPhoto = 'imageUrl' in activeMediaItem && !('type' in activeMediaItem);
+            const currentList = activeMediaList && activeMediaList.length > 0 
+              ? activeMediaList 
+              : (isPhoto ? getActiveGalleryPhotos() : []);
 
-        const currentIndex = currentList.findIndex(p => p.id === activeMediaItem.id);
-        if (currentIndex !== -1 && currentList.length > 1) {
-          onPrev = () => {
-            const prevIndex = (currentIndex - 1 + currentList.length) % currentList.length;
-            setActiveMediaItem(currentList[prevIndex]);
-          };
-          onNext = () => {
-            const nextIndex = (currentIndex + 1) % currentList.length;
-            setActiveMediaItem(currentList[nextIndex]);
-          };
-        }
+            const currentIndex = currentList.findIndex(p => p.id === activeMediaItem.id);
+            if (currentIndex !== -1 && currentList.length > 1) {
+              onPrev = () => {
+                const prevIndex = (currentIndex - 1 + currentList.length) % currentList.length;
+                setActiveMediaItem(currentList[prevIndex]);
+              };
+              onNext = () => {
+                const nextIndex = (currentIndex + 1) % currentList.length;
+                setActiveMediaItem(currentList[nextIndex]);
+              };
+            }
 
-        return (
-          <MediaViewer 
-            item={activeMediaItem}
-            onClose={() => window.history.back()}
-            isFavorited={isItemFavorited(activeMediaItem.id)}
-            onToggleFavorite={() => toggleFavorite(activeMediaItem.id)}
-            relatedItems={currentList}
-            onNext={onNext}
-            onPrev={onPrev}
-            onDownload={triggerSingleDownload}
-          />
-        );
-      })()}
+            return (
+              <MediaViewer 
+                item={activeMediaItem}
+                onClose={() => window.history.back()}
+                isFavorited={isItemFavorited(activeMediaItem.id)}
+                onToggleFavorite={() => toggleFavorite(activeMediaItem.id)}
+                relatedItems={currentList}
+                onNext={onNext}
+                onPrev={onPrev}
+                onDownload={triggerSingleDownload}
+              />
+            );
+          })()}
+        </Suspense>
+      )}
 
       {/* Custom Ratings Editor Modal (Beautiful Glassmorphic Design) */}
       {isRatingsModalOpen && (

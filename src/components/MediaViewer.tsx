@@ -465,7 +465,7 @@ export default function MediaViewer({
                 loop
                 playsInline
                 preload="auto"
-                referrerPolicy="no-referrer"
+                {...{ referrerPolicy: "no-referrer" } as any}
                 className="max-w-full max-h-full rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.9)] border border-zinc-900/60 bg-zinc-950 p-1 md:p-2"
               />
             ) : (

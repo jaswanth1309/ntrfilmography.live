@@ -293,7 +293,7 @@ export default function MovieVideoPlayer({ videoUrl, title, onClose }: MovieVide
           src={videoUrl || null}
           autoPlay
           className="w-full h-full object-contain"
-          referrerPolicy="no-referrer"
+          {...{ referrerPolicy: "no-referrer" } as any}
           onLoadStart={() => setIsLoading(true)}
           onCanPlay={() => setIsLoading(false)}
           onPlaying={() => setIsPlaying(true)}

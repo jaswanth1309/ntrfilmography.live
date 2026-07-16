@@ -54,7 +54,7 @@ export default function LazyVideo({ src, className, poster }: LazyVideoProps) {
           loop
           playsInline
           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-          referrerPolicy="no-referrer"
+          {...{ referrerPolicy: "no-referrer" } as any}
         />
       ) : poster ? (
         <img
