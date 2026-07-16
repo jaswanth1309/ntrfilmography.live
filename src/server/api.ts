@@ -98,6 +98,89 @@ function getFallbackMockFiles(c: any): any[] {
   }));
 }
 
+// Server-side lightweight R2 payload compressor to strip repeating R2 domains and shorten keys
+function compressR2Data(data: any): { b: string; f: any } {
+  if (!data) {
+    return { b: '', f: {} };
+  }
+  let publicUrlBase = '';
+  
+  const findBase = (item: any) => {
+    if (item && item.url && item.key) {
+      const idx = item.url.lastIndexOf('/' + item.key);
+      if (idx !== -1) {
+        publicUrlBase = item.url.substring(0, idx);
+        return true;
+      }
+    }
+    return false;
+  };
+
+  const scan = (obj: any): boolean => {
+    if (!obj) return false;
+    if (Array.isArray(obj)) {
+      for (const item of obj) {
+        if (findBase(item)) return true;
+        if (scan(item)) return true;
+      }
+    } else if (typeof obj === 'object') {
+      for (const key of Object.keys(obj)) {
+        if (scan(obj[key])) return true;
+      }
+    }
+    return false;
+  };
+
+  scan(data);
+
+  const compressFile = (file: any) => {
+    if (!file) return null;
+    const time = file.lastModified ? new Date(file.lastModified).getTime() : 0;
+    return {
+      k: file.key,
+      s: file.size,
+      m: time
+    };
+  };
+
+  const compressList = (list: any[]) => {
+    if (!Array.isArray(list)) return [];
+    return list.map(compressFile).filter(Boolean);
+  };
+
+  const compressMap = (map: any) => {
+    if (!map || typeof map !== 'object') return {};
+    const res: any = {};
+    for (const key of Object.keys(map)) {
+      if (Array.isArray(map[key])) {
+        res[key] = compressList(map[key]);
+      } else if (map[key] && typeof map[key] === 'object') {
+        res[key] = compressMap(map[key]);
+      }
+    }
+    return res;
+  };
+
+  const compressed: any = {
+    photos: compressMap(data.photos),
+    videoCuts: compressMap(data.videoCuts),
+    offlineVideos: compressMap(data.offlineVideos),
+    movies: compressList(data.movies),
+    thumbnailsP: compressList(data.thumbnailsP),
+    thumbnailsL: compressList(data.thumbnailsL),
+    photosMovieThumbnails: compressList(data.photosMovieThumbnails),
+    photosEventThumbnails: compressList(data.photosEventThumbnails || []),
+    videosEventThumbnails: compressList(data.videosEventThumbnails || []),
+    audio: compressList(data.audio || []),
+    bucketFiles: compressList(data.bucketFiles || [])
+  };
+
+  return {
+    b: publicUrlBase,
+    f: compressed
+  };
+}
+
 // Enable secure dynamic CORS based on ALLOWED_ORIGINS setting
 api.use("*", async (c, next) => {
   const origin = c.req.header("Origin");
@@ -806,7 +889,9 @@ api.get("/media/all", async (c) => {
       "Content-Type": "application/json",
       "X-Cache": "HIT-MEMORY"
     };
-    return c.json(cachedMediaAll, 200, responseHeaders);
+    const shouldCompress = c.req.query("compress") !== "false";
+    const payload = shouldCompress ? compressR2Data(cachedMediaAll) : cachedMediaAll;
+    return c.json(payload, 200, responseHeaders);
   }
 
   try {
@@ -978,6 +1063,9 @@ api.get("/media/all", async (c) => {
       }
     };
 
+    const shouldCompress = c.req.query("compress") !== "false";
+    const finalPayload = shouldCompress ? compressR2Data(responsePayload) : responsePayload;
+
     if (bucketFiles && bucketFiles.length > 0) {
       cachedMediaAll = responsePayload;
       cacheTimestamp = Date.now();
@@ -985,7 +1073,7 @@ api.get("/media/all", async (c) => {
       // Write to Cloudflare Cache API for instant subsequent fetches
       if (hasCacheAPI && cache && cacheKey) {
         try {
-          const jsonString = JSON.stringify(responsePayload);
+          const jsonString = JSON.stringify(finalPayload);
           const cacheResponse = new Response(jsonString, {
             headers: {
               "Content-Type": "application/json",
@@ -1008,7 +1096,7 @@ api.get("/media/all", async (c) => {
       "Content-Type": "application/json",
       "X-Cache": "MISS"
     };
-    return c.json(responsePayload, 200, resHeaders);
+    return c.json(finalPayload, 200, resHeaders);
   } catch (err: any) {
     const errMsg = err?.message || String(err || "Unknown error");
     console.error("Failed to list native R2 bucket files:", errMsg);

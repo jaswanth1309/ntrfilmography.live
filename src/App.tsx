@@ -1754,14 +1754,24 @@ export default function App() {
 
         if (abortController.signal.aborted) return;
 
-        activeData = data;
-
-        // Compress data before saving to stay well below quota limit
         let compressed: any = null;
-        try {
-          compressed = compressR2Data(data);
-        } catch (compErr) {
-          console.warn('Compression failed, using raw data fallback:', compErr);
+        if (data && data.b && data.f) {
+          // The API response is already compressed by the server!
+          compressed = data;
+          try {
+            activeData = decompressR2Data(data);
+          } catch (decompErr) {
+            console.error('Failed to decompress API response:', decompErr);
+            activeData = data;
+          }
+        } else {
+          activeData = data;
+          // Compress data before saving to stay well below quota limit
+          try {
+            compressed = compressR2Data(data);
+          } catch (compErr) {
+            console.warn('Compression failed, using raw data fallback:', compErr);
+          }
         }
 
         // Save fresh data to caches in parallel
@@ -1770,7 +1780,7 @@ export default function App() {
             try {
               await idbMediaCache.set(cacheKey, {
                 timestamp: Date.now(),
-                data: compressed || data,
+                data: compressed || activeData,
                 compressed: !!compressed
               });
             } catch (idbWriteErr) {
@@ -1788,7 +1798,7 @@ export default function App() {
               } else {
                 localStorage.setItem(cacheKey, JSON.stringify({
                   timestamp: Date.now(),
-                  data
+                  data: activeData
                 }));
               }
             } catch (lsWriteErr: any) {
@@ -1803,7 +1813,7 @@ export default function App() {
         ]);
 
         React.startTransition(() => {
-          setR2Data(data);
+          setR2Data(activeData);
           setError(null);
         });
       }
