@@ -2115,40 +2115,21 @@ export default function App() {
       filename = filename.replace(/[^a-zA-Z0-9._-]/g, "_");
     }
 
-    showToast('Download started. Preparing your file...', 'info');
+    showToast('Download starting. Streaming directly from storage...', 'info');
     
     try {
-      // Bypassing any proxy-based URL modification: Fetch the file directly from finalUrl (R2 Bucket)
-      const response = await fetch(finalUrl);
-      if (!response.ok) throw new Error(`Direct fetch failed with status ${response.status}`);
-      const blob = await response.blob();
+      // Trigger native download by navigating to our same-origin backend redirector.
+      // The backend generates S3 presigned URLs with 'Content-Disposition: attachment' or streams natively.
+      // This immediately registers Chrome's native download dialog without memory buffering or new tabs.
+      const downloadEndpoint = `${API_BASE_URL}/api/v1/media/download?url=${encodeURIComponent(finalUrl)}&key=${encodeURIComponent(itemKey || '')}&filename=${encodeURIComponent(filename)}`;
       
-      let ext = '';
-      const contentType = response.headers.get('content-type') || '';
-      if (contentType.includes('png')) ext = 'png';
-      else if (contentType.includes('jpeg') || contentType.includes('jpg')) ext = 'jpg';
-      else if (contentType.includes('webp')) ext = 'webp';
-      else if (contentType.includes('gif')) ext = 'gif';
-      else if (contentType.includes('mp4')) ext = 'mp4';
-      else if (contentType.includes('mkv')) ext = 'mkv';
-      
-      let finalFilename = filename;
-      if (ext && !filename.toLowerCase().endsWith(`.${ext}`) && !filename.toLowerCase().endsWith('.jpg') && !filename.toLowerCase().endsWith('.png') && !filename.toLowerCase().endsWith('.mp4') && !filename.toLowerCase().endsWith('.mkv')) {
-        finalFilename = `${filename}.${ext}`;
-      }
-
-      const blobUrl = URL.createObjectURL(blob);
       const link = document.createElement('a');
-      link.href = blobUrl;
-      link.setAttribute('download', finalFilename);
+      link.href = downloadEndpoint;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-      URL.revokeObjectURL(blobUrl);
-
-      showToast('Download completed successfully!', 'success');
     } catch (err) {
-      console.warn('[SINGLE DOWNLOAD] Direct bucket blob fetch failed, falling back to direct window.open:', err);
+      console.warn('[SINGLE DOWNLOAD] Same-origin download trigger failed, falling back to direct window.open:', err);
       showToast('Opening direct stream link...', 'info');
       
       // Fallback: Open finalUrl directly in a new window/tab to bypass proxy entirely

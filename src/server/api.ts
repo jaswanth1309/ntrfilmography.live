@@ -719,28 +719,52 @@ api.get("/media/download", async (c) => {
 
   const safeFilename = sanitizeFilename(filename);
 
-  // 100% Native Cloudflare R2 Streaming Download
+  // 1. Production-Grade S3 Presigned URL Redirection with Dynamic Content-Disposition Override
+  const endpoint = getEnvVal(c, ["CLOUDFLARE_R2_ENDPOINT"]);
+  const accessKeyId = getEnvVal(c, ["CLOUDFLARE_R2_ACCESS_KEY_ID"]);
+  const secretAccessKey = getEnvVal(c, ["CLOUDFLARE_R2_SECRET_ACCESS_KEY"]);
+  const bucketName = getEnvVal(c, ["CLOUDFLARE_R2_BUCKET_NAME"]);
+
+  if (activeKey && !isMockId && endpoint && accessKeyId && secretAccessKey && bucketName) {
+    try {
+      console.log(`[DOWNLOAD] Generating presigned R2 S3 URL with attachment override for: "${activeKey}"`);
+      const { S3Client, GetObjectCommand } = await import("@aws-sdk/client-s3");
+      const { getSignedUrl } = await import("@aws-sdk/s3-request-presigner");
+
+      const s3Client = new S3Client({
+        region: "auto",
+        endpoint: endpoint,
+        credentials: {
+          accessKeyId,
+          secretAccessKey,
+        },
+      });
+
+      const sanitizedAttachmentFilename = safeFilename.replace(/[^a-zA-Z0-9._-]/g, "_");
+      const utf8Filename = encodeURIComponent(safeFilename);
+      const contentDispositionValue = `attachment; filename="${sanitizedAttachmentFilename}"; filename*=UTF-8''${utf8Filename}`;
+
+      const command = new GetObjectCommand({
+        Bucket: bucketName,
+        Key: activeKey,
+        ResponseContentDisposition: contentDispositionValue,
+      });
+
+      const signedUrl = await getSignedUrl(s3Client, command, { expiresIn: 3600 });
+      console.log(`[DOWNLOAD] Presigned URL generated successfully. Redirecting browser to: ${signedUrl.substring(0, 100)}...`);
+      return c.redirect(signedUrl, 307);
+    } catch (s3Err: any) {
+      console.error("[DOWNLOAD] Failed to generate S3 presigned URL download link:", s3Err.message);
+    }
+  }
+
+  // 2. Fallback: 100% Native Cloudflare R2 Streaming Download via Direct Bucket Binding
   const bucket = (c.env as any)?.MY_BUCKET;
   if (activeKey && bucket) {
     try {
-      console.log(`[DOWNLOAD PROXY] Direct native R2 Get request for key: "${activeKey}"`);
+      console.log(`[DOWNLOAD] Falling back to direct native R2 get stream for key: "${activeKey}"`);
       const file = await (bucket as any).get(activeKey);
       if (file) {
-        // Redirection optimization for video/large files to enable range headers/CDN streaming
-        const isVideoOrLarge = safeFilename.toLowerCase().endsWith('.mp4') || 
-                               safeFilename.toLowerCase().endsWith('.mkv') || 
-                               safeFilename.toLowerCase().endsWith('.avi') || 
-                               safeFilename.toLowerCase().endsWith('.webm') || 
-                               safeFilename.toLowerCase().endsWith('.mov') ||
-                               safeFilename.toLowerCase().endsWith('.zip') ||
-                               (activeKey && (activeKey.includes('Videos/') || activeKey.includes('VideoCuts/') || activeKey.includes('Movies/')));
-        
-        if (isVideoOrLarge) {
-          const targetUrl = `${publicUrl}/${activeKey.split("/").map(encodeURIComponent).join("/")}`;
-          console.log(`[DOWNLOAD PROXY] Redirecting large file/video to CDN: ${targetUrl}`);
-          return c.redirect(targetUrl, 307);
-        }
-
         const contentType = file.httpMetadata?.contentType || "application/octet-stream";
         const contentLength = file.size;
 
@@ -753,11 +777,11 @@ api.get("/media/download", async (c) => {
         return c.body(file.body);
       }
     } catch (err: any) {
-      console.warn(`[DOWNLOAD PROXY] Native R2 get failed for key "${activeKey}". Fallback to URL proxy. Error:`, err.message);
+      console.warn(`[DOWNLOAD] Direct R2 get stream failed for key "${activeKey}". Fallback to URL proxy. Error:`, err.message);
     }
   }
 
-  // Fallback to proxy stream via URL (SSRF guarded proxying)
+  // 3. Fallback: Proxy stream via URL (SSRF guarded proxying) or CDN Redirect
   let targetUrl = fileUrl;
   if (!targetUrl && activeKey) {
     targetUrl = `${publicUrl}/${activeKey}`;
@@ -776,7 +800,7 @@ api.get("/media/download", async (c) => {
                          (activeKey && (activeKey.includes('Videos/') || activeKey.includes('VideoCuts/') || activeKey.includes('Movies/')));
 
   if (isVideoOrLarge) {
-    console.log(`[DOWNLOAD PROXY] Redirecting large video/movie/zip directly to CDN to bypass container size limits: ${targetUrl}`);
+    console.log(`[DOWNLOAD] Redirecting large file/video to CDN directly as final fallback: ${targetUrl}`);
     return c.redirect(targetUrl, 307);
   }
 
