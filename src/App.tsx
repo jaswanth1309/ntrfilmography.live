@@ -7,7 +7,6 @@ import {
   Instagram, Twitter, Youtube, ChevronLeft, ChevronRight, ChevronDown,
   SkipBack, SkipForward, VolumeX, Music, LayoutGrid, List, Grid, ArrowUpDown, Info
 } from 'lucide-react';
-import JSZip from 'jszip';
 
 import { MOVIES, PHOTOS, VIDEOS } from './data/mockData';
 import { Movie, Photo, Video as VideoType, Song } from './types';
@@ -201,9 +200,11 @@ export default function App() {
     setIsBulkDownloading(true);
     setBulkDownloadProgress({ current: 0, total: selectedItems.length, filename: 'Initializing ZIP Engine...' });
 
-    const zip = new JSZip();
-
     try {
+      const JSZipModule = await import('jszip');
+      const JSZip = JSZipModule.default;
+      const zip = new JSZip();
+
       const concurrency = 10;
       let completedCount = 0;
       let index = 0;
@@ -3074,9 +3075,11 @@ export default function App() {
     setIsBulkDownloading(true);
     setBulkDownloadProgress({ current: 0, total: itemsToDownload.length, filename: 'Initializing ZIP Engine...' });
 
-    const zip = new JSZip();
-
     try {
+      const JSZipModule = await import('jszip');
+      const JSZip = JSZipModule.default;
+      const zip = new JSZip();
+
       const concurrency = 10;
       let completedCount = 0;
       let index = 0;
