@@ -1,4 +1,4 @@
-import { Movie, Photo, Video, TimelineMilestone } from '../types';
+import { Movie, Photo, Video } from '../types';
 
 export const MOVIES: Movie[] = [
   {
@@ -192,61 +192,3 @@ export const VIDEOS: Video[] = [
   }
 ];
 
-export const TIMELINE: TimelineMilestone[] = [
-  {
-    id: 't1',
-    year: 1923,
-    title: 'The Birth of a Legend',
-    description: 'Nandamuri Taraka Rama Rao was born in Nimmakuru, Andhra Pradesh. His humble origins would shape his deep connection to ordinary villagers.',
-    category: 'Personal'
-  },
-  {
-    id: 't2',
-    year: 1949,
-    title: 'Cinematic Debut in Mana Desam',
-    description: 'Debut in Telugu cinema in a minor role as a police inspector. Soon gained acclaim for his dedication and discipline.',
-    category: 'Cinematic'
-  },
-  {
-    id: 't3',
-    year: 1957,
-    title: 'Mayabazar and Divine Status',
-    description: 'Portrayed Lord Krishna in Mayabazar, creating a deep mythological impression. Devotees began worshiping his portrait in their prayer rooms.',
-    category: 'Cinematic'
-  },
-  {
-    id: 't4',
-    year: 1982,
-    title: 'Telugu Desam Party (TDP) Founding',
-    description: 'Founded the TDP political party to restore "Telugu self-respect" (Telugu Vari Atma Gauravam), launching a historic Chaitanya Ratham chariot tour across AP.',
-    category: 'Political'
-  },
-  {
-    id: 't5',
-    year: 1983,
-    title: 'Historic Sweep as Chief Minister',
-    description: 'Elected Chief Minister of Andhra Pradesh with a landslide victory within 9 months of founding the party, introducing revolutionary welfare schemes like ₹2 per kg rice.',
-    category: 'Political'
-  },
-  {
-    id: 't6',
-    year: 1983,
-    title: 'Birth of Jr. NTR (NTR Jr)',
-    description: 'Nandamuri Taraka Rama Rao Jr. was born to Harikrishna, carrying forward the great name and cinematic genius of his grandfather.',
-    category: 'Personal'
-  },
-  {
-    id: 't7',
-    year: 2001,
-    title: 'Jr. NTR’s Breakthrough with Student No. 1',
-    description: 'Tarak debuted as a lead and struck massive commercial gold with Student No. 1 under director S. S. Rajamouli, beginning a historic partnership.',
-    category: 'Cinematic'
-  },
-  {
-    id: 't8',
-    year: 2022,
-    title: 'RRR and Global Acclaim',
-    description: 'Tarak starred as Komaram Bheem in Rajamouli\'s RRR, garnering global critical acclaim, Oscar winning triumphs, and representing Telugu pride globally.',
-    category: 'Cinematic'
-  }
-];

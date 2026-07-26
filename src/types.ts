@@ -1,15 +1,5 @@
 // Application Type Definitions
 
-export interface Person {
-  id: string;
-  name: string;
-  roleType: 'Actor' | 'Director' | 'Composer' | 'Producer' | 'Lyricist';
-  biography: string;
-  birthDate: string;
-  deathDate?: string;
-  profileImageUrl: string;
-}
-
 export interface CastMember {
   id: string;
   personName: string;
@@ -93,22 +83,6 @@ export interface Video {
   category: 'Trailer' | 'Teaser' | 'Cut' | 'BehindTheScenes';
   duration: string;
   views: string;
-}
-
-export interface TimelineMilestone {
-  id: string;
-  year: number;
-  title: string;
-  description: string;
-  category: 'Cinematic' | 'Political' | 'Personal';
-  imageUrl?: string;
-}
-
-export interface Collection {
-  id: string;
-  name: string;
-  description: string;
-  itemIds: { [key: string]: boolean }; // Map of item ID -> true
 }
 
 export interface FavoriteItem {

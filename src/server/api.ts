@@ -382,7 +382,6 @@ async function listFilesSingle(c: any, prefix: string) {
       options.prefix = prefix;
     }
 
-    console.log(`[R2 LIST] Listing native prefix: "${prefix}"`);
     const listResult = await (bucket as any).list(options);
     if (!listResult || !listResult.objects) {
       return [];
@@ -406,7 +405,6 @@ async function listFilesSingle(c: any, prefix: string) {
 // Highly optimized parallel prefix pre-fetching to prevent slow sequential page walks
 async function listAllBucketFiles(c: any) {
   const bucket = (c.env as any)?.MY_BUCKET;
-  console.log("MY_BUCKET EXISTS:", !!bucket);
   if (!bucket) {
     console.warn("MY_BUCKET is not bound in c.env. Returning fallback mock files for development mode.");
     return getFallbackMockFiles(c);
@@ -434,8 +432,6 @@ async function listAllBucketFiles(c: any) {
   ];
 
   try {
-    console.log(`[R2 LIST ALL] Launching parallel pre-fetch for ${prefixes.length} prefixes...`);
-    
     const fetchPrefixFiles = async (prefix: string): Promise<any[]> => {
       const prefixFiles: any[] = [];
       let isTruncated = true;
@@ -477,7 +473,6 @@ async function listAllBucketFiles(c: any) {
     }
     
     const allFiles = Array.from(allFilesMap.values());
-    console.log(`[R2 LIST ALL] Parallel pre-fetch finished. Found ${allFiles.length} unique files.`);
     return allFiles;
   } catch (err: any) {
     console.warn("[R2 LIST ALL] Parallel pre-fetch failed/partially rejected, falling back to sequential scan:", err.message);
@@ -499,7 +494,6 @@ async function listAllBucketFilesSequential(c: any, publicUrl: string) {
         options.cursor = cursor;
       }
 
-      console.log(`[R2 LIST ALL FALLBACK] Fetching bucket page with cursor: ${cursor || 'none'}`);
       const listResult = await (bucket as any).list(options);
       if (listResult && listResult.objects) {
         const files = listResult.objects
@@ -673,7 +667,6 @@ api.get("/media/download", async (c) => {
       const extracted = parsedUrl.searchParams.get("url");
       if (extracted) {
         fileUrl = decodeURIComponent(extracted);
-        console.log(`[DOWNLOAD PROXY] Extracted original file URL from optimized wsrv.nl link: "${fileUrl}"`);
       }
     } catch (e) {
       console.warn("[DOWNLOAD PROXY] Failed to extract original file URL from wsrv.nl link:", e);
@@ -724,7 +717,6 @@ api.get("/media/download", async (c) => {
   const bucket = (c.env as any)?.MY_BUCKET;
   if (activeKey && bucket) {
     try {
-      console.log(`[DOWNLOAD PROXY] Direct native R2 Get request for key: "${activeKey}" with Range: ${rangeHeader || "None"}`);
       let file: any = null;
       if (rangeHeader) {
         try {
@@ -781,7 +773,6 @@ api.get("/media/download", async (c) => {
   }
 
   const encodedTargetUrl = targetUrl.startsWith("http") ? encodeURI(decodeURI(targetUrl)) : targetUrl;
-  console.log(`Streaming proxy download request: ${encodedTargetUrl.substring(0, 100)}... -> ${safeFilename} with Range: ${rangeHeader || "None"}`);
 
   const fetchHeaders: Record<string, string> = {};
   if (rangeHeader) {
@@ -871,7 +862,6 @@ api.get("/media/all", async (c) => {
       
       const cachedResponse = await cache.match(cacheKey);
       if (cachedResponse) {
-        console.log("[CACHE] Serving /media/all from Cloudflare Edge Cache API");
         const headers = new Headers(cachedResponse.headers);
         headers.set("X-Cache", "HIT-EDGE");
         return new Response(cachedResponse.body, {
@@ -889,7 +879,6 @@ api.get("/media/all", async (c) => {
 
   // 2. Check in-memory fallback cache
   if (cachedMediaAll && (now - cacheTimestamp < CACHE_DURATION) && !bypassCache) {
-    console.log("Serving all aggregated media from server-side memory cache");
     const responseHeaders = {
       "Content-Type": "application/json",
       "X-Cache": "HIT-MEMORY"
@@ -900,7 +889,6 @@ api.get("/media/all", async (c) => {
   }
 
   try {
-    console.log("Fetching fresh media files from native Cloudflare R2 bucket...");
     const bucketFiles = await listAllBucketFiles(c);
 
     const normalizePath = (p: string): string => {
@@ -1090,7 +1078,6 @@ api.get("/media/all", async (c) => {
           } else {
             await cache.put(cacheKey, cacheResponse);
           }
-          console.log("[CACHE] Successfully wrote fresh response payload to Cloudflare Edge Cache API");
         } catch (putErr: any) {
           console.warn("[CACHE] Failed to write to Cloudflare Edge Cache API:", putErr.message);
         }

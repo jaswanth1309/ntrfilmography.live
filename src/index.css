@@ -199,24 +199,5 @@ html, body {
   .animate-eq-4 { animation: eq-flow-4 1.1s ease-in-out infinite; }
   .animate-eq-5 { animation: eq-flow-5 1.3s ease-in-out infinite; }
 
-  /* Premium running tiger keyframes */
-  @keyframes tiger-stride {
-    0%, 100% {
-      transform: translateY(0) rotate(-3deg) scaleX(1);
-    }
-    25% {
-      transform: translateY(-3px) rotate(1deg) scaleX(1.03);
-    }
-    50% {
-      transform: translateY(-6px) rotate(4deg) scaleX(1);
-    }
-    75% {
-      transform: translateY(-2px) rotate(-1deg) scaleX(0.98);
-    }
-  }
-
-  .animate-tiger-stride {
-    animation: tiger-stride 0.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
-  }
 }
 

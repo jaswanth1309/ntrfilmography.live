@@ -10,8 +10,6 @@ import {
 
 import { MOVIES, PHOTOS, VIDEOS } from './data/mockData';
 import { Movie, Photo, Video as VideoType, Song } from './types';
-import Footer from './components/Footer';
-import PremiumRunningTiger from './components/PremiumRunningTiger';
 import LazyVideo from './components/LazyVideo';
 import { getOptimizedImageUrl } from './utils/mediaOptim';
 
@@ -29,7 +27,6 @@ import {
   FolderNode,
   buildFolderTree,
   getAllFilesRecursive,
-  findFolderNodeByPath,
   getMockBucketFiles,
   idbMediaCache,
   compressR2Data,
@@ -37,7 +34,7 @@ import {
 } from './utils/mediaHelpers';
 
 // Modular component imports
-import { TigerLogo, LiquidGlassTab } from './components/LiquidGlassTab';
+import { TigerLogo } from './components/LiquidGlassTab';
 
 // Keep global reference map to prevent garbage collection of preloaded images
 const globalPreloadedImageRefs = new Map<string, HTMLImageElement>();
@@ -3211,7 +3208,7 @@ export default function App() {
         }}
       />
       
-      {/* PREMIUM TIGER LOADING ANIMATION */}
+      {/* PREMIUM LOADING ANIMATION */}
       <AnimatePresence mode="wait">
         {loadingState !== 'ready' && (
           <motion.div

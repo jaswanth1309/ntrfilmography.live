@@ -131,9 +131,7 @@ export async function loadAndCacheMedia(
     }
 
   } catch (error: any) {
-    if (error.name === 'AbortError') {
-      console.log('Media load aborted:', url);
-    } else {
+    if (error.name !== 'AbortError') {
       console.warn(`Caching failed for ${url}, falling back to original URL:`, error);
     }
   }
@@ -185,7 +183,6 @@ export function preloadNeighbours(urls: string[]): void {
         });
         if (response.ok) {
           await cache.put(url, response);
-          console.log(`Successfully preloaded neighbor in background: ${url}`);
         }
       }
     } catch (error: any) {

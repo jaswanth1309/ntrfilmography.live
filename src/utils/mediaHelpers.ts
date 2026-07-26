@@ -200,15 +200,6 @@ export function getAllFilesRecursive(node: FolderNode): any[] {
   return files;
 }
 
-export function findFolderNodeByPath(rootNode: FolderNode, path: string): FolderNode | null {
-  if (rootNode.path === path) return rootNode;
-  for (const child of Object.values(rootNode.folders)) {
-    const found = findFolderNodeByPath(child, path);
-    if (found) return found;
-  }
-  return null;
-}
-
 export const getMockBucketFiles = (): any[] => {
   const mockFiles: any[] = [];
   

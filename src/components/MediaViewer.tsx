@@ -15,7 +15,6 @@ interface MediaViewerProps {
   isFavorited: boolean;
   onToggleFavorite: () => void;
   relatedItems?: any[];
-  onSelectRelated?: (item: any) => void;
   onNext?: () => void;
   onPrev?: () => void;
   onDownload?: (url: string, filename: string, key?: string) => void;
