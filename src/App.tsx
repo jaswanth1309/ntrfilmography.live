@@ -950,6 +950,12 @@ export default function App() {
     if (activeMediaItem) {
       d += 1;
     }
+    if (movieVideoUrl) {
+      d += 1;
+    }
+    if (isRatingsModalOpen) {
+      d += 1;
+    }
     return d;
   };
 
@@ -957,19 +963,31 @@ export default function App() {
   const executeStructuralBack = () => {
     setSearchQuery('');
     
-    // 1. Close active media item if open
+    // 1. Close movie stream video player if open
+    if (movieVideoUrl) {
+      setMovieVideoUrl(null);
+      return true;
+    }
+
+    // 2. Close active media viewer (photos / video clips / stills) if open
     if (activeMediaItem) {
       setActiveMediaItem(null);
       return true;
     }
+
+    // 3. Close custom ratings modal if open
+    if (isRatingsModalOpen) {
+      setIsRatingsModalOpen(false);
+      return true;
+    }
     
-    // 2. Close selected movie details if open
+    // 4. Close selected movie details if open
     if (selectedMovie) {
       setSelectedMovie(null);
       return true;
     }
     
-    // 3. Handle folder structure back in photos view
+    // 5. Handle folder structure back in photos view
     if (currentView === 'photos') {
       if (photoFolderStack.length > 0) {
         setPhotoFolderStack(prev => prev.slice(0, -1));
@@ -980,7 +998,7 @@ export default function App() {
       }
     }
     
-    // 4. Handle folder structure back in video cuts view
+    // 6. Handle folder structure back in video cuts view
     if (currentView === 'cuts') {
       if (selectedVideoCutsFolderNode) {
         setSelectedVideoCutsFolderNode(null);
@@ -991,7 +1009,7 @@ export default function App() {
       }
     }
     
-    // 5. Handle folder structure back in offline videos view
+    // 7. Handle folder structure back in offline videos view
     if (currentView === 'offline') {
       if (selectedVideosFolderNode) {
         setSelectedVideosFolderNode(null);
@@ -1002,7 +1020,7 @@ export default function App() {
       }
     }
     
-    // 6. Handle transitioning from any other non-home subview back to home
+    // 8. Handle transitioning from any other non-home subview back to home
     if (currentView !== 'home') {
       setCurrentView('home');
       return true;
@@ -2903,17 +2921,11 @@ export default function App() {
         return;
       }
 
-      // 1. Escape key to close modals
+      // 1. Escape key to close active modal/player/overlay
       if (e.key === 'Escape') {
-        if (movieVideoUrl) {
-          setMovieVideoUrl(null);
+        if (movieVideoUrl || activeMediaItem || isRatingsModalOpen || selectedMovie) {
           e.preventDefault();
-        } else if (activeMediaItem) {
-          window.history.back(); // Closes MediaViewer
-          e.preventDefault();
-        } else if (selectedMovie) {
-          setSelectedMovie(null);
-          e.preventDefault();
+          executeStructuralBack();
         }
       }
 
@@ -5833,7 +5845,7 @@ export default function App() {
             return (
               <MediaViewer 
                 item={activeMediaItem}
-                onClose={() => window.history.back()}
+                onClose={() => setActiveMediaItem(null)}
                 isFavorited={isItemFavorited(activeMediaItem.id)}
                 onToggleFavorite={() => toggleFavorite(activeMediaItem.id)}
                 relatedItems={currentList}
