@@ -960,6 +960,8 @@ export default function App() {
   // Helper to perform a structural "one step back" transition
   const executeStructuralBack = () => {
     setSearchQuery('');
+    setSearchDraft('');
+    setIsSearchFocused(false);
     
     // 1. Close movie stream video player if open
     if (movieVideoUrl) {
@@ -1125,8 +1127,17 @@ export default function App() {
   const handleGoBack = () => {
     triggerHaptic('light');
     setSearchQuery('');
+    setSearchDraft('');
+    setIsSearchFocused(false);
     window.history.back();
   };
+
+  // Automatically reset search when currentView tab changes
+  useEffect(() => {
+    setSearchQuery('');
+    setSearchDraft('');
+    setIsSearchFocused(false);
+  }, [currentView]);
 
   // Professional search collection and matching helpers
   const collectAlbumFolderNodes = (
@@ -3921,14 +3932,7 @@ export default function App() {
                                 setIsSearchFocused(false);
                               }
                             }}
-                            placeholder={
-                              currentView === 'movies' ? 'Search movies & soundtracks...' :
-                              currentView === 'photos' ? 'Search photo albums & folder names...' :
-                              currentView === 'cuts' ? 'Search video cut folders & cuts...' :
-                              currentView === 'offline' ? 'Search offline video folders...' :
-                              currentView === 'favorites' ? 'Search starred favorites...' :
-                              'Search across all sections...'
-                            }
+                            placeholder="search..."
                             className="w-full bg-zinc-950/30 backdrop-blur-md border border-white/10 focus:border-amber-500/50 rounded-xl py-2 pl-9 pr-4 text-xs text-white placeholder-zinc-500 outline-none transition-all shadow-[inset_0_1px_1px_rgba(255,255,255,0.05)] focus:shadow-[0_0_15px_rgba(245,158,11,0.15),inset_0_1px_1px_rgba(255,255,255,0.05)] h-[34px]"
                           />
                           {searchDraft && (
@@ -4043,45 +4047,62 @@ export default function App() {
 
                               if (matchedFolders.length === 0) return null;
 
+                              const assignedUrls = new Set<string>();
+
                               return (
                                 <div className="absolute top-full left-0 right-0 mt-2 bg-zinc-950/90 backdrop-blur-2xl border border-white/10 rounded-xl shadow-[0_12px_40px_rgba(0,0,0,0.8)] max-h-80 overflow-y-auto z-50 divide-y divide-white/5 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
                                   <div className="p-2">
                                     <div className="text-[10px] uppercase font-mono font-black text-emerald-400 px-2 py-1 select-none text-left">
                                       Photo Albums & Folders ({matchedFolders.length})
                                     </div>
-                                    {matchedFolders.map(({ name, displayName, node, firstLevel, parentName }) => (
-                                      <div
-                                        key={`sug-photofolder-${firstLevel}-${parentName || ''}-${name}`}
-                                        onMouseDown={() => {
-                                          setCurrentView('photos');
-                                          if (firstLevel && parsedBucketData?.photos?.folders[firstLevel]) {
-                                            setPhotoFirstLevel(firstLevel);
-                                          }
-                                          if (parentName && parentName !== firstLevel && parsedBucketData?.photos?.folders[firstLevel]?.folders?.[parentName]) {
-                                            setPhotoFolderStack([parsedBucketData.photos.folders[firstLevel].folders[parentName], node]);
-                                            setSelectedPhotoFolderNode(node);
-                                          } else {
-                                            setPhotoFolderStack([]);
-                                            setSelectedPhotoFolderNode(node);
-                                          }
-                                          setSearchQuery('');
-                                          setSearchDraft('');
-                                        }}
-                                        className="flex items-center gap-3 p-2 hover:bg-white/5 rounded-lg cursor-pointer transition-colors group"
-                                      >
-                                        <div className="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center shrink-0 text-emerald-400">
-                                          <Folder className="w-4 h-4" />
+                                    {matchedFolders.map(({ name, displayName, node, firstLevel, parentName }) => {
+                                      const recFiles = getAllFilesRecursive(node);
+                                      const thumbnail = getFolderThumbnail(node.name, recFiles.map(f => ({ imageUrl: f.imageUrl || f.videoUrl, dimensions: f.dimensions } as any)), assignedUrls, 'photos');
+                                      const thumbUrl = getOptimizedImageUrl(thumbnail, 'low');
+
+                                      return (
+                                        <div
+                                          key={`sug-photofolder-${firstLevel}-${parentName || ''}-${name}`}
+                                          onMouseDown={() => {
+                                            setCurrentView('photos');
+                                            if (firstLevel && parsedBucketData?.photos?.folders[firstLevel]) {
+                                              setPhotoFirstLevel(firstLevel);
+                                            }
+                                            if (parentName && parentName !== firstLevel && parsedBucketData?.photos?.folders[firstLevel]?.folders?.[parentName]) {
+                                              setPhotoFolderStack([parsedBucketData.photos.folders[firstLevel].folders[parentName], node]);
+                                              setSelectedPhotoFolderNode(node);
+                                            } else {
+                                              setPhotoFolderStack([]);
+                                              setSelectedPhotoFolderNode(node);
+                                            }
+                                            setSearchQuery('');
+                                            setSearchDraft('');
+                                          }}
+                                          className="flex items-center gap-3 p-2 hover:bg-white/5 rounded-lg cursor-pointer transition-colors group"
+                                        >
+                                          {thumbUrl ? (
+                                            <img
+                                              src={thumbUrl}
+                                              alt={displayName}
+                                              referrerPolicy="no-referrer"
+                                              className="w-8 h-10 object-cover rounded border border-emerald-500/30 shrink-0"
+                                            />
+                                          ) : (
+                                            <div className="w-8 h-10 rounded bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center shrink-0 text-emerald-400">
+                                              <Folder className="w-4 h-4" />
+                                            </div>
+                                          )}
+                                          <div className="flex-1 min-w-0 text-left">
+                                            <p className="text-xs font-bold text-zinc-100 group-hover:text-emerald-400 transition-colors truncate uppercase tracking-wider">
+                                              {displayName}
+                                            </p>
+                                            <p className="text-[10px] text-zinc-500 font-mono">
+                                              {firstLevel.replace(/_/g, ' ')} • {recFiles.length} photos
+                                            </p>
+                                          </div>
                                         </div>
-                                        <div className="flex-1 min-w-0 text-left">
-                                          <p className="text-xs font-bold text-zinc-100 group-hover:text-emerald-400 transition-colors truncate uppercase tracking-wider">
-                                            {displayName}
-                                          </p>
-                                          <p className="text-[10px] text-zinc-500 font-mono">
-                                            {firstLevel.replace(/_/g, ' ')} • {getAllFilesRecursive(node).length} photos
-                                          </p>
-                                        </div>
-                                      </div>
-                                    ))}
+                                      );
+                                    })}
                                   </div>
                                 </div>
                               );
@@ -4093,39 +4114,56 @@ export default function App() {
 
                               if (matchedFolders.length === 0) return null;
 
+                              const assignedUrls = new Set<string>();
+
                               return (
                                 <div className="absolute top-full left-0 right-0 mt-2 bg-zinc-950/90 backdrop-blur-2xl border border-white/10 rounded-xl shadow-[0_12px_40px_rgba(0,0,0,0.8)] max-h-80 overflow-y-auto z-50 divide-y divide-white/5 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
                                   <div className="p-2">
                                     <div className="text-[10px] uppercase font-mono font-black text-cyan-400 px-2 py-1 select-none text-left">
                                       Video Cut Folders ({matchedFolders.length})
                                     </div>
-                                    {matchedFolders.map(({ name, displayName, node, firstLevel }) => (
-                                      <div
-                                        key={`sug-cutfolder-${firstLevel}-${name}`}
-                                        onMouseDown={() => {
-                                          setCurrentView('cuts');
-                                          if (firstLevel && parsedBucketData?.videoCuts?.folders[firstLevel]) {
-                                            setVideoCutsFirstLevel(firstLevel);
-                                          }
-                                          setSelectedVideoCutsFolderNode(node);
-                                          setSearchQuery('');
-                                          setSearchDraft('');
-                                        }}
-                                        className="flex items-center gap-3 p-2 hover:bg-white/5 rounded-lg cursor-pointer transition-colors group"
-                                      >
-                                        <div className="w-8 h-8 rounded-lg bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center shrink-0 text-cyan-400">
-                                          <Folder className="w-4 h-4" />
+                                    {matchedFolders.map(({ name, displayName, node, firstLevel }) => {
+                                      const recFiles = getAllFilesRecursive(node);
+                                      const thumbnail = getFolderThumbnail(node.name, recFiles.map(f => ({ imageUrl: f.imageUrl || f.videoUrl } as any)), assignedUrls, 'videocuts');
+                                      const thumbUrl = getOptimizedImageUrl(thumbnail, 'low');
+
+                                      return (
+                                        <div
+                                          key={`sug-cutfolder-${firstLevel}-${name}`}
+                                          onMouseDown={() => {
+                                            setCurrentView('cuts');
+                                            if (firstLevel && parsedBucketData?.videoCuts?.folders[firstLevel]) {
+                                              setVideoCutsFirstLevel(firstLevel);
+                                            }
+                                            setSelectedVideoCutsFolderNode(node);
+                                            setSearchQuery('');
+                                            setSearchDraft('');
+                                          }}
+                                          className="flex items-center gap-3 p-2 hover:bg-white/5 rounded-lg cursor-pointer transition-colors group"
+                                        >
+                                          {thumbUrl ? (
+                                            <img
+                                              src={thumbUrl}
+                                              alt={displayName}
+                                              referrerPolicy="no-referrer"
+                                              className="w-8 h-10 object-cover rounded border border-cyan-500/30 shrink-0"
+                                            />
+                                          ) : (
+                                            <div className="w-8 h-10 rounded bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center shrink-0 text-cyan-400">
+                                              <Folder className="w-4 h-4" />
+                                            </div>
+                                          )}
+                                          <div className="flex-1 min-w-0 text-left">
+                                            <p className="text-xs font-bold text-zinc-100 group-hover:text-cyan-400 transition-colors truncate uppercase tracking-wider">
+                                              {displayName}
+                                            </p>
+                                            <p className="text-[10px] text-zinc-500 font-mono">
+                                              {firstLevel.replace(/_/g, ' ')} • {recFiles.length} videos
+                                            </p>
+                                          </div>
                                         </div>
-                                        <div className="flex-1 min-w-0 text-left">
-                                          <p className="text-xs font-bold text-zinc-100 group-hover:text-cyan-400 transition-colors truncate uppercase tracking-wider">
-                                            {displayName}
-                                          </p>
-                                          <p className="text-[10px] text-zinc-500 font-mono">
-                                            {firstLevel.replace(/_/g, ' ')} • {getAllFilesRecursive(node).length} videos
-                                          </p>
-                                        </div>
-                                      </div>
-                                    ))}
+                                      );
+                                    })}
                                   </div>
                                 </div>
                               );
@@ -4137,39 +4175,56 @@ export default function App() {
 
                               if (matchedFolders.length === 0) return null;
 
+                              const assignedUrls = new Set<string>();
+
                               return (
                                 <div className="absolute top-full left-0 right-0 mt-2 bg-zinc-950/90 backdrop-blur-2xl border border-white/10 rounded-xl shadow-[0_12px_40px_rgba(0,0,0,0.8)] max-h-80 overflow-y-auto z-50 divide-y divide-white/5 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
                                   <div className="p-2">
                                     <div className="text-[10px] uppercase font-mono font-black text-rose-400 px-2 py-1 select-none text-left">
                                       Video Folders ({matchedFolders.length})
                                     </div>
-                                    {matchedFolders.map(({ name, displayName, node, firstLevel }) => (
-                                      <div
-                                        key={`sug-offfolder-${firstLevel}-${name}`}
-                                        onMouseDown={() => {
-                                          setCurrentView('offline');
-                                          if (firstLevel && parsedBucketData?.videos?.folders[firstLevel]) {
-                                            setVideosFirstLevel(firstLevel);
-                                          }
-                                          setSelectedVideosFolderNode(node);
-                                          setSearchQuery('');
-                                          setSearchDraft('');
-                                        }}
-                                        className="flex items-center gap-3 p-2 hover:bg-white/5 rounded-lg cursor-pointer transition-colors group"
-                                      >
-                                        <div className="w-8 h-8 rounded-lg bg-rose-500/10 border border-rose-500/20 flex items-center justify-center shrink-0 text-rose-400">
-                                          <Folder className="w-4 h-4" />
+                                    {matchedFolders.map(({ name, displayName, node, firstLevel }) => {
+                                      const recFiles = getAllFilesRecursive(node);
+                                      const thumbnail = getFolderThumbnail(node.name, recFiles.map(f => ({ imageUrl: f.imageUrl || f.videoUrl } as any)), assignedUrls, 'videos');
+                                      const thumbUrl = getOptimizedImageUrl(thumbnail, 'low');
+
+                                      return (
+                                        <div
+                                          key={`sug-offfolder-${firstLevel}-${name}`}
+                                          onMouseDown={() => {
+                                            setCurrentView('offline');
+                                            if (firstLevel && parsedBucketData?.videos?.folders[firstLevel]) {
+                                              setVideosFirstLevel(firstLevel);
+                                            }
+                                            setSelectedVideosFolderNode(node);
+                                            setSearchQuery('');
+                                            setSearchDraft('');
+                                          }}
+                                          className="flex items-center gap-3 p-2 hover:bg-white/5 rounded-lg cursor-pointer transition-colors group"
+                                        >
+                                          {thumbUrl ? (
+                                            <img
+                                              src={thumbUrl}
+                                              alt={displayName}
+                                              referrerPolicy="no-referrer"
+                                              className="w-8 h-10 object-cover rounded border border-rose-500/30 shrink-0"
+                                            />
+                                          ) : (
+                                            <div className="w-8 h-10 rounded bg-rose-500/10 border border-rose-500/20 flex items-center justify-center shrink-0 text-rose-400">
+                                              <Folder className="w-4 h-4" />
+                                            </div>
+                                          )}
+                                          <div className="flex-1 min-w-0 text-left">
+                                            <p className="text-xs font-bold text-zinc-100 group-hover:text-rose-400 transition-colors truncate uppercase tracking-wider">
+                                              {displayName}
+                                            </p>
+                                            <p className="text-[10px] text-zinc-500 font-mono">
+                                              {firstLevel.replace(/_/g, ' ')} • {recFiles.length} videos
+                                            </p>
+                                          </div>
                                         </div>
-                                        <div className="flex-1 min-w-0 text-left">
-                                          <p className="text-xs font-bold text-zinc-100 group-hover:text-rose-400 transition-colors truncate uppercase tracking-wider">
-                                            {displayName}
-                                          </p>
-                                          <p className="text-[10px] text-zinc-500 font-mono">
-                                            {firstLevel.replace(/_/g, ' ')} • {getAllFilesRecursive(node).length} videos
-                                          </p>
-                                        </div>
-                                      </div>
-                                    ))}
+                                      );
+                                    })}
                                   </div>
                                 </div>
                               );
@@ -4191,44 +4246,61 @@ export default function App() {
                                       <Heart className="w-3 h-3 fill-red-400 text-red-400" />
                                       <span>Favorites ({matchedFavs.length})</span>
                                     </div>
-                                    {matchedFavs.map(fav => (
-                                      <div
-                                        key={`sug-fav-${fav.item.id}`}
-                                        onMouseDown={() => {
-                                          if (fav.type === 'movie') {
-                                            setCurrentView('movies');
-                                            setSelectedMovie(fav.item);
-                                          } else if (fav.type === 'photo') {
-                                            setCurrentView('photos');
-                                            setActiveMediaItem(fav.item);
-                                          } else if (fav.type === 'video') {
-                                            setCurrentView('cuts');
-                                            setActiveMediaItem(fav.item);
-                                          } else if (fav.type === 'song') {
-                                            setCurrentView('movies');
-                                            handlePlaySong(fav.item);
-                                          }
-                                          setSearchQuery('');
-                                          setSearchDraft('');
-                                        }}
-                                        className="flex items-center gap-3 p-2 hover:bg-white/5 rounded-lg cursor-pointer transition-colors group"
-                                      >
-                                        <div className="w-8 h-8 rounded bg-red-500/10 border border-red-500/20 flex items-center justify-center shrink-0 text-red-400">
-                                          {fav.type === 'movie' ? <Film className="w-3.5 h-3.5" /> :
-                                           fav.type === 'photo' ? <ImageIcon className="w-3.5 h-3.5" /> :
-                                           fav.type === 'song' ? <Music className="w-3.5 h-3.5" /> :
-                                           <Video className="w-3.5 h-3.5" />}
+                                    {matchedFavs.map(fav => {
+                                      let rawThumb = fav.item.posterUrl || fav.item.imageUrl || fav.item.thumbnailUrl;
+                                      if (fav.type === 'song' && fav.item.movie) {
+                                        rawThumb = fav.item.movie.posterUrl;
+                                      }
+                                      const favThumb = rawThumb ? getOptimizedImageUrl(rawThumb, 'low') : null;
+
+                                      return (
+                                        <div
+                                          key={`sug-fav-${fav.item.id}`}
+                                          onMouseDown={() => {
+                                            if (fav.type === 'movie') {
+                                              setCurrentView('movies');
+                                              setSelectedMovie(fav.item);
+                                            } else if (fav.type === 'photo') {
+                                              setCurrentView('photos');
+                                              setActiveMediaItem(fav.item);
+                                            } else if (fav.type === 'video') {
+                                              setCurrentView('cuts');
+                                              setActiveMediaItem(fav.item);
+                                            } else if (fav.type === 'song') {
+                                              setCurrentView('movies');
+                                              handlePlaySong(fav.item);
+                                            }
+                                            setSearchQuery('');
+                                            setSearchDraft('');
+                                          }}
+                                          className="flex items-center gap-3 p-2 hover:bg-white/5 rounded-lg cursor-pointer transition-colors group"
+                                        >
+                                          {favThumb ? (
+                                            <img
+                                              src={favThumb}
+                                              alt=""
+                                              referrerPolicy="no-referrer"
+                                              className="w-8 h-10 object-cover rounded border border-red-500/30 shrink-0"
+                                            />
+                                          ) : (
+                                            <div className="w-8 h-10 rounded bg-red-500/10 border border-red-500/20 flex items-center justify-center shrink-0 text-red-400">
+                                              {fav.type === 'movie' ? <Film className="w-3.5 h-3.5" /> :
+                                               fav.type === 'photo' ? <ImageIcon className="w-3.5 h-3.5" /> :
+                                               fav.type === 'song' ? <Music className="w-3.5 h-3.5" /> :
+                                               <Video className="w-3.5 h-3.5" />}
+                                            </div>
+                                          )}
+                                          <div className="flex-1 min-w-0 text-left">
+                                            <p className="text-xs font-bold text-zinc-100 group-hover:text-red-400 transition-colors truncate">
+                                              {fav.item.title || fav.item.name}
+                                            </p>
+                                            <p className="text-[10px] text-zinc-500 font-mono capitalize">
+                                              {fav.type}
+                                            </p>
+                                          </div>
                                         </div>
-                                        <div className="flex-1 min-w-0 text-left">
-                                          <p className="text-xs font-bold text-zinc-100 group-hover:text-red-400 transition-colors truncate">
-                                            {fav.item.title || fav.item.name}
-                                          </p>
-                                          <p className="text-[10px] text-zinc-500 font-mono capitalize">
-                                            {fav.type}
-                                          </p>
-                                        </div>
-                                      </div>
-                                    ))}
+                                      );
+                                    })}
                                   </div>
                                 </div>
                               );
