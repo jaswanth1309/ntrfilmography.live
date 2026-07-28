@@ -1143,16 +1143,8 @@ export default function App() {
       if (!seen.has(key)) {
         seen.add(key);
 
-        const categoryLabel = firstL.replace(/[-_]/g, ' ').trim();
-        const parentLabel = parentN ? parentN.replace(/[-_]/g, ' ').trim() : '';
         const nodeLabel = n.name.replace(/[-_]/g, ' ').trim();
-
-        let displayName = nodeLabel;
-        if (parentLabel && parentLabel.toLowerCase() !== categoryLabel.toLowerCase() && !nodeLabel.toLowerCase().includes(parentLabel.toLowerCase())) {
-          displayName = `${parentLabel} - ${nodeLabel}`;
-        } else if (categoryLabel.toLowerCase() !== nodeLabel.toLowerCase() && !nodeLabel.toLowerCase().includes(categoryLabel.toLowerCase())) {
-          displayName = `${categoryLabel} - ${nodeLabel}`;
-        }
+        const displayName = nodeLabel;
 
         list.push({
           name: n.name,
