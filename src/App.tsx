@@ -12,6 +12,7 @@ import { MOVIES, PHOTOS, VIDEOS } from './data/mockData';
 import { Movie, Photo, Video as VideoType, Song } from './types';
 import LazyVideo from './components/LazyVideo';
 import { getOptimizedImageUrl } from './utils/mediaOptim';
+import { Tilt } from './components/core/tilt';
 
 // Lazy load heavy interactive components for bundle size and loading speed optimization
 const MediaViewer = lazy(() => import('./components/MediaViewer'));
@@ -1176,6 +1177,13 @@ export default function App() {
   }, [toast]);
 
   const renderVideosGrid = (videosList: any[], themeColor: 'cyan' | 'rose' = 'cyan', hideTitle: boolean = false) => {
+    // Natural numeric sorting for videos (e.g. 001, 002, 003...)
+    const sortedVideosList = [...videosList].sort((a, b) => {
+      const titleA = a.title || (a.id || a.key || '').split('/').pop() || '';
+      const titleB = b.title || (b.id || b.key || '').split('/').pop() || '';
+      return titleA.localeCompare(titleB, undefined, { numeric: true, sensitivity: 'base' });
+    });
+
     return (
       <div className={`grid ${
         isMobile
@@ -1186,7 +1194,7 @@ export default function App() {
                 : 'grid-cols-4 sm:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-1.5 sm:gap-2')
           : 'grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6'
       }`}>
-        {videosList.map((video: any) => {
+        {sortedVideosList.map((video: any) => {
           const isDirectStream = video.videoUrl && video.videoUrl.startsWith('http');
           const isSelected = isMobile && isSelectMode && selectedItems.some(x => x.id === video.id);
           
@@ -1215,79 +1223,82 @@ export default function App() {
             }
           }
 
-          return (
-            <div 
-              key={video.id}
-              onClick={() => {
-                if (isMobile && isSelectMode) {
-                  toggleSelection(video, 'video');
-                } else {
-                  setActiveMediaItem(video);
-                  setActiveMediaList(videosList);
-                }
-              }}
-              className={`group bg-transparent transition-all duration-300 flex flex-col justify-between cursor-pointer relative overflow-hidden aspect-video ${
-                isMobile
-                  ? (gridDensity === 'cozy'
-                      ? 'rounded-2xl'
-                      : gridDensity === 'standard'
-                        ? 'rounded-xl'
-                        : 'rounded-lg')
-                  : 'rounded-2xl'
-              } ${isSelected ? 'ring-2 ring-amber-500 scale-[0.96]' : 'hover:scale-[1.02]'}`}
-            >
-              <div className="w-full h-full relative flex items-center justify-center overflow-hidden">
-                {isDirectStream ? (
-                  <>
-                    <LazyVideo 
-                      src={video.videoUrl || null} 
-                      poster={resolvedThumbnailUrl}
-                      className="w-full h-full object-cover"
-                    />
-                    <div className="absolute inset-0 bg-black/5 group-hover:bg-black/45 transition-all duration-300 flex flex-col items-center justify-center z-10 p-2 text-center">
-                      <div className="w-10 h-10 rounded-full bg-amber-500/20 text-amber-400 backdrop-blur-md border border-amber-500/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-300 scale-90 group-hover:scale-100 shadow-[0_0_15px_rgba(245,158,11,0.2)]">
-                        <Play className="w-4 h-4 fill-amber-400 translate-x-0.5" />
-                      </div>
-                    </div>
-                  </>
-                ) : (
-                  <div className="w-full h-full relative">
-                    <img 
-                      src={video.videoUrl ? `https://img.youtube.com/vi/${video.videoUrl}/0.jpg` : null} 
-                      alt={video.title} 
-                      referrerPolicy="no-referrer"
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                    />
-                    <div className="absolute inset-0 bg-black/5 group-hover:bg-black/45 transition-all duration-300 flex flex-col items-center justify-center z-10 p-2 text-center">
-                      <div className="w-10 h-10 rounded-full bg-amber-500/20 text-amber-400 backdrop-blur-md border border-amber-500/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-300 scale-90 group-hover:scale-100 shadow-[0_0_15px_rgba(245,158,11,0.2)]">
-                        <Play className="w-4 h-4 fill-amber-400 translate-x-0.5" />
-                      </div>
-                    </div>
-                  </div>
-                )}
- 
-                {/* Aesthetic Title overlay on top of thumbnail at the bottom */}
-                {!hideTitle && (
-                  <div className="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black/90 via-black/45 to-transparent z-20 pointer-events-none">
-                    <h4 
-                      className={`${isMobile && gridDensity === 'compact' ? 'text-[9px]' : isMobile && gridDensity === 'standard' ? 'text-[10px]' : 'text-xs'} font-bold text-zinc-100 group-hover:text-amber-400 transition-colors truncate font-sans`}
-                      title={video.title}
-                    >
-                      {video.title}
-                    </h4>
-                  </div>
-                )}
+          const displayTitle = video.title || (video.id || video.key || '').split('/').pop() || 'Video';
 
-                {/* Selection indicator circle checkbox */}
-                {isMobile && isSelectMode && (
-                  <div className="absolute top-2 right-2 z-30 w-5 h-5 rounded-full flex items-center justify-center border-2 border-white bg-black/50 shadow-md">
-                    {isSelected && (
-                      <div className="w-2.5 h-2.5 rounded-full bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.6)]" />
-                    )}
-                  </div>
-                )}
+          return (
+            <Tilt rotationFactor={8} isRevese key={video.id} className="w-full h-full">
+              <div 
+                onClick={() => {
+                  if (isMobile && isSelectMode) {
+                    toggleSelection(video, 'video');
+                  } else {
+                    setActiveMediaItem(video);
+                    setActiveMediaList(sortedVideosList);
+                  }
+                }}
+                className={`group bg-transparent transition-all duration-300 flex flex-col justify-between cursor-pointer relative overflow-hidden aspect-video ${
+                  isMobile
+                    ? (gridDensity === 'cozy'
+                        ? 'rounded-2xl'
+                        : gridDensity === 'standard'
+                          ? 'rounded-xl'
+                          : 'rounded-lg')
+                    : 'rounded-2xl'
+                } ${isSelected ? 'ring-2 ring-amber-500 scale-[0.96]' : 'hover:scale-[1.02]'}`}
+              >
+                <div className="w-full h-full relative flex items-center justify-center overflow-hidden">
+                  {isDirectStream ? (
+                    <>
+                      <LazyVideo 
+                        src={video.videoUrl || null} 
+                        poster={resolvedThumbnailUrl}
+                        className="w-full h-full object-cover"
+                      />
+                      <div className="absolute inset-0 bg-black/5 group-hover:bg-black/45 transition-all duration-300 flex flex-col items-center justify-center z-10 p-2 text-center">
+                        <div className="w-10 h-10 rounded-full bg-amber-500/20 text-amber-400 backdrop-blur-md border border-amber-500/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-300 scale-90 group-hover:scale-100 shadow-[0_0_15px_rgba(245,158,11,0.2)]">
+                          <Play className="w-4 h-4 fill-amber-400 translate-x-0.5" />
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="w-full h-full relative">
+                      <img 
+                        src={video.videoUrl ? `https://img.youtube.com/vi/${video.videoUrl}/0.jpg` : null} 
+                        alt={displayTitle} 
+                        referrerPolicy="no-referrer"
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                      />
+                      <div className="absolute inset-0 bg-black/5 group-hover:bg-black/45 transition-all duration-300 flex flex-col items-center justify-center z-10 p-2 text-center">
+                        <div className="w-10 h-10 rounded-full bg-amber-500/20 text-amber-400 backdrop-blur-md border border-amber-500/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-300 scale-90 group-hover:scale-100 shadow-[0_0_15px_rgba(245,158,11,0.2)]">
+                          <Play className="w-4 h-4 fill-amber-400 translate-x-0.5" />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+   
+                  {/* Title / file name overlay strictly at the bottom */}
+                  {!hideTitle && (
+                    <div className="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black/95 via-black/60 to-transparent z-20 pointer-events-none">
+                      <span 
+                        className={`block ${isMobile && gridDensity === 'compact' ? 'text-[9px]' : isMobile && gridDensity === 'standard' ? 'text-[10px]' : 'text-xs'} font-extrabold text-zinc-100 group-hover:text-amber-400 transition-colors truncate font-sans drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)]`}
+                        title={displayTitle}
+                      >
+                        {displayTitle}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Selection indicator circle checkbox */}
+                  {isMobile && isSelectMode && (
+                    <div className="absolute top-2 right-2 z-30 w-5 h-5 rounded-full flex items-center justify-center border-2 border-white bg-black/50 shadow-md">
+                      {isSelected && (
+                        <div className="w-2.5 h-2.5 rounded-full bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.6)]" />
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
+            </Tilt>
           );
         })}
       </div>
@@ -3441,84 +3452,92 @@ export default function App() {
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 max-w-6xl mx-auto w-full px-2 sm:px-4">
               
               {/* Card 1: Movies (Amber) */}
-              <motion.div 
-                key={`movies-tab-${currentView}`}
-                onClick={() => { triggerHaptic('medium'); setCurrentView('movies'); setSearchQuery(''); }}
-                className="group relative cursor-pointer clay-card overflow-hidden h-40 sm:h-64 border border-zinc-900 hover:border-amber-500/40 hover:shadow-[0_0_30px_rgba(245,158,11,0.15)] transition-all duration-300 flex flex-col items-center justify-center p-3 sm:p-6 text-center"
-                initial={isMobile ? { opacity: 0, x: -50 } : { opacity: 0, y: 40, scale: 0.96 }}
-                animate={{ opacity: 1, x: 0, y: 0, scale: 1 }}
-                transition={isMobile ? { type: "tween", ease: "linear", duration: 0.2 } : { type: "spring", stiffness: 90, damping: 14, delay: 0.05 }}
-              >
-                <div className="absolute inset-0 bg-gradient-to-b from-amber-500/5 via-transparent to-zinc-950/90 z-0 opacity-40 group-hover:opacity-60 transition-opacity" />
-                <div className="z-10 flex flex-col items-center justify-center gap-2 sm:gap-4">
-                  <div className="bg-amber-500/10 p-3.5 sm:p-5 rounded-2xl sm:rounded-3xl border border-amber-500/20 text-amber-500 group-hover:scale-110 group-hover:bg-amber-500/20 group-hover:text-amber-400 transition-all duration-300">
-                    <Film className="w-8 h-8 sm:w-12 sm:h-12" />
+              <Tilt rotationFactor={8} isRevese className="w-full">
+                <motion.div 
+                  key={`movies-tab-${currentView}`}
+                  onClick={() => { triggerHaptic('medium'); setCurrentView('movies'); setSearchQuery(''); }}
+                  className="group relative cursor-pointer clay-card overflow-hidden h-40 sm:h-64 border border-zinc-900 hover:border-amber-500/40 hover:shadow-[0_0_30px_rgba(245,158,11,0.15)] transition-all duration-300 flex flex-col items-center justify-center p-3 sm:p-6 text-center"
+                  initial={isMobile ? { opacity: 0, x: -50 } : { opacity: 0, y: 40, scale: 0.96 }}
+                  animate={{ opacity: 1, x: 0, y: 0, scale: 1 }}
+                  transition={isMobile ? { type: "tween", ease: "linear", duration: 0.2 } : { type: "spring", stiffness: 90, damping: 14, delay: 0.05 }}
+                >
+                  <div className="absolute inset-0 bg-gradient-to-b from-amber-500/5 via-transparent to-zinc-950/90 z-0 opacity-40 group-hover:opacity-60 transition-opacity" />
+                  <div className="z-10 flex flex-col items-center justify-center gap-2 sm:gap-4">
+                    <div className="bg-amber-500/10 p-3.5 sm:p-5 rounded-2xl sm:rounded-3xl border border-amber-500/20 text-amber-500 group-hover:scale-110 group-hover:bg-amber-500/20 group-hover:text-amber-400 transition-all duration-300">
+                      <Film className="w-8 h-8 sm:w-12 sm:h-12" />
+                    </div>
+                    <h3 className="text-sm sm:text-xl font-black text-white group-hover:text-amber-500 transition-colors uppercase tracking-wider mt-1 sm:mt-2">
+                      Movies
+                    </h3>
                   </div>
-                  <h3 className="text-sm sm:text-xl font-black text-white group-hover:text-amber-500 transition-colors uppercase tracking-wider mt-1 sm:mt-2">
-                    Movies
-                  </h3>
-                </div>
-              </motion.div>
+                </motion.div>
+              </Tilt>
 
               {/* Card 2: Photos (Emerald) */}
-              <motion.div 
-                key={`photos-tab-${currentView}`}
-                onClick={() => { triggerHaptic('medium'); setCurrentView('photos'); setActivePhotoSubView('selected'); setSelectedPhotoFolderNode(null); setSearchQuery(''); }}
-                className="group relative cursor-pointer clay-card overflow-hidden h-40 sm:h-64 border border-zinc-900 hover:border-emerald-500/40 hover:shadow-[0_0_30px_rgba(16,185,129,0.15)] transition-all duration-300 flex flex-col items-center justify-center p-3 sm:p-6 text-center"
-                initial={isMobile ? { opacity: 0, x: 50 } : { opacity: 0, y: 40, scale: 0.96 }}
-                animate={{ opacity: 1, x: 0, y: 0, scale: 1 }}
-                transition={isMobile ? { type: "tween", ease: "linear", duration: 0.2 } : { type: "spring", stiffness: 90, damping: 14, delay: 0.1 }}
-              >
-                <div className="absolute inset-0 bg-gradient-to-b from-emerald-500/5 via-transparent to-zinc-950/90 z-0 opacity-40 group-hover:opacity-60 transition-opacity" />
-                <div className="z-10 flex flex-col items-center justify-center gap-2 sm:gap-4">
-                  <div className="bg-emerald-500/10 p-3.5 sm:p-5 rounded-2xl sm:rounded-3xl border border-emerald-500/20 text-emerald-400 group-hover:scale-110 group-hover:bg-emerald-500/20 group-hover:text-emerald-300 transition-all duration-300">
-                    <ImageIcon className="w-8 h-8 sm:w-12 sm:h-12" />
+              <Tilt rotationFactor={8} isRevese className="w-full">
+                <motion.div 
+                  key={`photos-tab-${currentView}`}
+                  onClick={() => { triggerHaptic('medium'); setCurrentView('photos'); setActivePhotoSubView('selected'); setSelectedPhotoFolderNode(null); setSearchQuery(''); }}
+                  className="group relative cursor-pointer clay-card overflow-hidden h-40 sm:h-64 border border-zinc-900 hover:border-emerald-500/40 hover:shadow-[0_0_30px_rgba(16,185,129,0.15)] transition-all duration-300 flex flex-col items-center justify-center p-3 sm:p-6 text-center"
+                  initial={isMobile ? { opacity: 0, x: 50 } : { opacity: 0, y: 40, scale: 0.96 }}
+                  animate={{ opacity: 1, x: 0, y: 0, scale: 1 }}
+                  transition={isMobile ? { type: "tween", ease: "linear", duration: 0.2 } : { type: "spring", stiffness: 90, damping: 14, delay: 0.1 }}
+                >
+                  <div className="absolute inset-0 bg-gradient-to-b from-emerald-500/5 via-transparent to-zinc-950/90 z-0 opacity-40 group-hover:opacity-60 transition-opacity" />
+                  <div className="z-10 flex flex-col items-center justify-center gap-2 sm:gap-4">
+                    <div className="bg-emerald-500/10 p-3.5 sm:p-5 rounded-2xl sm:rounded-3xl border border-emerald-500/20 text-emerald-400 group-hover:scale-110 group-hover:bg-emerald-500/20 group-hover:text-emerald-300 transition-all duration-300">
+                      <ImageIcon className="w-8 h-8 sm:w-12 sm:h-12" />
+                    </div>
+                    <h3 className="text-sm sm:text-xl font-black text-white group-hover:text-emerald-400 transition-colors uppercase tracking-wider mt-1 sm:mt-2">
+                      Photos
+                    </h3>
                   </div>
-                  <h3 className="text-sm sm:text-xl font-black text-white group-hover:text-emerald-400 transition-colors uppercase tracking-wider mt-1 sm:mt-2">
-                    Photos
-                  </h3>
-                </div>
-              </motion.div>
+                </motion.div>
+              </Tilt>
 
               {/* Card 3: Video Cuts (Cyan) */}
-              <motion.div 
-                key={`cuts-tab-${currentView}`}
-                onClick={() => { triggerHaptic('medium'); setCurrentView('cuts'); setActiveVideoSubView('selected'); setSelectedVideoCutsFolderNode(null); setSearchQuery(''); }}
-                className="group relative cursor-pointer clay-card overflow-hidden h-40 sm:h-64 border border-zinc-900 hover:border-cyan-500/40 hover:shadow-[0_0_30px_rgba(6,182,212,0.15)] transition-all duration-300 flex flex-col items-center justify-center p-3 sm:p-6 text-center"
-                initial={isMobile ? { opacity: 0, x: -50 } : { opacity: 0, y: 40, scale: 0.96 }}
-                animate={{ opacity: 1, x: 0, y: 0, scale: 1 }}
-                transition={isMobile ? { type: "tween", ease: "linear", duration: 0.2 } : { type: "spring", stiffness: 90, damping: 14, delay: 0.15 }}
-              >
-                <div className="absolute inset-0 bg-gradient-to-b from-cyan-500/5 via-transparent to-zinc-950/90 z-0 opacity-40 group-hover:opacity-60 transition-opacity" />
-                <div className="z-10 flex flex-col items-center justify-center gap-2 sm:gap-4">
-                  <div className="bg-cyan-500/10 p-3.5 sm:p-5 rounded-2xl sm:rounded-3xl border border-cyan-500/20 text-cyan-400 group-hover:scale-110 group-hover:bg-cyan-500/20 group-hover:text-cyan-300 transition-all duration-300">
-                    <Video className="w-8 h-8 sm:w-12 sm:h-12" />
+              <Tilt rotationFactor={8} isRevese className="w-full">
+                <motion.div 
+                  key={`cuts-tab-${currentView}`}
+                  onClick={() => { triggerHaptic('medium'); setCurrentView('cuts'); setActiveVideoSubView('selected'); setSelectedVideoCutsFolderNode(null); setSearchQuery(''); }}
+                  className="group relative cursor-pointer clay-card overflow-hidden h-40 sm:h-64 border border-zinc-900 hover:border-cyan-500/40 hover:shadow-[0_0_30px_rgba(6,182,212,0.15)] transition-all duration-300 flex flex-col items-center justify-center p-3 sm:p-6 text-center"
+                  initial={isMobile ? { opacity: 0, x: -50 } : { opacity: 0, y: 40, scale: 0.96 }}
+                  animate={{ opacity: 1, x: 0, y: 0, scale: 1 }}
+                  transition={isMobile ? { type: "tween", ease: "linear", duration: 0.2 } : { type: "spring", stiffness: 90, damping: 14, delay: 0.15 }}
+                >
+                  <div className="absolute inset-0 bg-gradient-to-b from-cyan-500/5 via-transparent to-zinc-950/90 z-0 opacity-40 group-hover:opacity-60 transition-opacity" />
+                  <div className="z-10 flex flex-col items-center justify-center gap-2 sm:gap-4">
+                    <div className="bg-cyan-500/10 p-3.5 sm:p-5 rounded-2xl sm:rounded-3xl border border-cyan-500/20 text-cyan-400 group-hover:scale-110 group-hover:bg-cyan-500/20 group-hover:text-cyan-300 transition-all duration-300">
+                      <Video className="w-8 h-8 sm:w-12 sm:h-12" />
+                    </div>
+                    <h3 className="text-sm sm:text-xl font-black text-white group-hover:text-cyan-400 transition-colors uppercase tracking-wider mt-1 sm:mt-2">
+                      Video Cuts
+                    </h3>
                   </div>
-                  <h3 className="text-sm sm:text-xl font-black text-white group-hover:text-cyan-400 transition-colors uppercase tracking-wider mt-1 sm:mt-2">
-                    Video Cuts
-                  </h3>
-                </div>
-              </motion.div>
+                </motion.div>
+              </Tilt>
 
               {/* Card 4: Videos (Rose) */}
-              <motion.div 
-                key={`videos-tab-${currentView}`}
-                onClick={() => { triggerHaptic('medium'); setCurrentView('offline'); setActiveOfflineSubView('selected'); setSelectedVideosFolderNode(null); setSearchQuery(''); }}
-                className="group relative cursor-pointer clay-card overflow-hidden h-40 sm:h-64 border border-zinc-900 hover:border-rose-500/40 hover:shadow-[0_0_30px_rgba(244,63,94,0.15)] transition-all duration-300 flex flex-col items-center justify-center p-3 sm:p-6 text-center"
-                initial={isMobile ? { opacity: 0, x: 50 } : { opacity: 0, y: 40, scale: 0.96 }}
-                animate={{ opacity: 1, x: 0, y: 0, scale: 1 }}
-                transition={isMobile ? { type: "tween", ease: "linear", duration: 0.2 } : { type: "spring", stiffness: 90, damping: 14, delay: 0.2 }}
-              >
-                <div className="absolute inset-0 bg-gradient-to-b from-rose-500/5 via-transparent to-zinc-950/90 z-0 opacity-40 group-hover:opacity-60 transition-opacity" />
-                <div className="z-10 flex flex-col items-center justify-center gap-2 sm:gap-4">
-                  <div className="bg-rose-500/10 p-3.5 sm:p-5 rounded-2xl sm:rounded-3xl border border-rose-500/20 text-rose-400 group-hover:scale-110 group-hover:bg-rose-500/20 group-hover:text-rose-300 transition-all duration-300">
-                    <Layers className="w-8 h-8 sm:w-12 sm:h-12" />
+              <Tilt rotationFactor={8} isRevese className="w-full">
+                <motion.div 
+                  key={`videos-tab-${currentView}`}
+                  onClick={() => { triggerHaptic('medium'); setCurrentView('offline'); setActiveOfflineSubView('selected'); setSelectedVideosFolderNode(null); setSearchQuery(''); }}
+                  className="group relative cursor-pointer clay-card overflow-hidden h-40 sm:h-64 border border-zinc-900 hover:border-rose-500/40 hover:shadow-[0_0_30px_rgba(244,63,94,0.15)] transition-all duration-300 flex flex-col items-center justify-center p-3 sm:p-6 text-center"
+                  initial={isMobile ? { opacity: 0, x: 50 } : { opacity: 0, y: 40, scale: 0.96 }}
+                  animate={{ opacity: 1, x: 0, y: 0, scale: 1 }}
+                  transition={isMobile ? { type: "tween", ease: "linear", duration: 0.2 } : { type: "spring", stiffness: 90, damping: 14, delay: 0.2 }}
+                >
+                  <div className="absolute inset-0 bg-gradient-to-b from-rose-500/5 via-transparent to-zinc-950/90 z-0 opacity-40 group-hover:opacity-60 transition-opacity" />
+                  <div className="z-10 flex flex-col items-center justify-center gap-2 sm:gap-4">
+                    <div className="bg-rose-500/10 p-3.5 sm:p-5 rounded-2xl sm:rounded-3xl border border-rose-500/20 text-rose-400 group-hover:scale-110 group-hover:bg-rose-500/20 group-hover:text-rose-300 transition-all duration-300">
+                      <Layers className="w-8 h-8 sm:w-12 sm:h-12" />
+                    </div>
+                    <h3 className="text-sm sm:text-xl font-black text-white group-hover:text-rose-400 transition-colors uppercase tracking-wider mt-1 sm:mt-2">
+                      Videos
+                    </h3>
                   </div>
-                  <h3 className="text-sm sm:text-xl font-black text-white group-hover:text-rose-400 transition-colors uppercase tracking-wider mt-1 sm:mt-2">
-                    Videos
-                  </h3>
-                </div>
-              </motion.div>
+                </motion.div>
+              </Tilt>
 
             </div>
           </div>
@@ -4557,65 +4576,66 @@ export default function App() {
                           : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 sm:gap-6'
                       }`} id="movies-grid">
                         {movies.map((movie) => (
-                          <div
-                            key={movie.id}
-                            onClick={() => setSelectedMovie(movie)}
-                            className={`group relative cursor-pointer flex flex-col overflow-hidden border border-zinc-800/40 bg-zinc-900/40 backdrop-blur-md hover:border-amber-500/40 shadow-[0_8px_32px_rgba(0,0,0,0.5),inset_0_1px_1px_rgba(255,255,255,0.05)] hover:shadow-[0_0_24px_rgba(245,158,11,0.25)] transition-all duration-300 active:scale-95 ${
-                              isMobile
-                                ? (gridDensity === 'cozy' 
-                                    ? 'rounded-2xl pt-2 px-2 pb-1.5' 
-                                    : gridDensity === 'standard' 
-                                      ? 'rounded-xl pt-1 px-1 pb-0.5' 
-                                      : 'rounded-lg p-0.5')
-                                : 'rounded-2xl pt-2.5 px-2.5 pb-2 sm:pt-3 sm:px-3 sm:pb-2'
-                            }`}
-                          >
-                            {/* Portrait Poster Image Container with Glass highlight and clay inset */}
-                            <div className={`relative aspect-[2/3] overflow-hidden bg-zinc-950/60 border border-zinc-900/60 shadow-inner ${
-                              isMobile
-                                ? (gridDensity === 'cozy' 
-                                    ? 'rounded-xl' 
-                                    : gridDensity === 'standard' 
-                                      ? 'rounded-lg' 
-                                      : 'rounded-md')
-                                : 'rounded-xl'
-                            }`}>
-                              <img
-                                src={getOptimizedImageUrl(movie.posterUrl, 'low')}
-                                alt={movie.title}
-                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                                referrerPolicy="no-referrer"
-                                loading="lazy"
-                              />
-                              
-                              {/* Glowing bottom gradient */}
-                              <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-zinc-950/20 to-transparent opacity-90 group-hover:opacity-100 transition-opacity" />
-
-                              {/* Hover Play Button Overlay with tactile visual feedback */}
-                              <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all bg-black/45 backdrop-blur-xs">
-                                <div className="w-11 h-11 rounded-full bg-amber-500 text-zinc-950 flex items-center justify-center shadow-[0_4px_12px_rgba(245,158,11,0.4),inset_0_2px_4px_rgba(255,255,255,0.4)] border border-amber-400 transform scale-90 group-hover:scale-100 transition-all">
-                                  <Play className="w-5 h-5 fill-zinc-950 text-zinc-950 ml-0.5" />
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* Text Metadata */}
-                            <div className={`pt-1 pb-0 px-0.5 flex flex-col justify-center items-center gap-0.5 ${
-                              isMobile && gridDensity === 'compact' ? 'pt-0.5 pb-0 gap-0' : ''
-                            }`}>
-                              <p className={`font-black text-white group-hover:text-amber-400 uppercase tracking-wide truncate transition-colors text-center w-full ${
+                          <Tilt rotationFactor={8} isRevese key={movie.id} className="w-full">
+                            <div
+                              onClick={() => setSelectedMovie(movie)}
+                              className={`group relative cursor-pointer flex flex-col overflow-hidden border border-zinc-800/40 bg-zinc-900/40 backdrop-blur-md hover:border-amber-500/40 shadow-[0_8px_32px_rgba(0,0,0,0.5),inset_0_1px_1px_rgba(255,255,255,0.05)] hover:shadow-[0_0_24px_rgba(245,158,11,0.25)] transition-all duration-300 active:scale-95 ${
                                 isMobile
                                   ? (gridDensity === 'cozy' 
-                                      ? 'text-xs' 
+                                      ? 'rounded-2xl pt-2 px-2 pb-1.5' 
                                       : gridDensity === 'standard' 
-                                        ? 'text-[10px]' 
-                                        : 'text-[8px]')
-                                  : 'text-xs sm:text-sm'
+                                        ? 'rounded-xl pt-1 px-1 pb-0.5' 
+                                        : 'rounded-lg p-0.5')
+                                  : 'rounded-2xl pt-2.5 px-2.5 pb-2 sm:pt-3 sm:px-3 sm:pb-2'
+                              }`}
+                            >
+                              {/* Portrait Poster Image Container with Glass highlight and clay inset */}
+                              <div className={`relative aspect-[2/3] overflow-hidden bg-zinc-950/60 border border-zinc-900/60 shadow-inner ${
+                                isMobile
+                                  ? (gridDensity === 'cozy' 
+                                      ? 'rounded-xl' 
+                                      : gridDensity === 'standard' 
+                                        ? 'rounded-lg' 
+                                        : 'rounded-md')
+                                  : 'rounded-xl'
                               }`}>
-                                {movie.title}
-                              </p>
+                                <img
+                                  src={getOptimizedImageUrl(movie.posterUrl, 'low')}
+                                  alt={movie.title}
+                                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                                  referrerPolicy="no-referrer"
+                                  loading="lazy"
+                                />
+                                
+                                {/* Glowing bottom gradient */}
+                                <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-zinc-950/20 to-transparent opacity-90 group-hover:opacity-100 transition-opacity" />
+
+                                {/* Hover Play Button Overlay with tactile visual feedback */}
+                                <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all bg-black/45 backdrop-blur-xs">
+                                  <div className="w-11 h-11 rounded-full bg-amber-500 text-zinc-950 flex items-center justify-center shadow-[0_4px_12px_rgba(245,158,11,0.4),inset_0_2px_4px_rgba(255,255,255,0.4)] border border-amber-400 transform scale-90 group-hover:scale-100 transition-all">
+                                    <Play className="w-5 h-5 fill-zinc-950 text-zinc-950 ml-0.5" />
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Text Metadata */}
+                              <div className={`pt-1 pb-0 px-0.5 flex flex-col justify-center items-center gap-0.5 ${
+                                isMobile && gridDensity === 'compact' ? 'pt-0.5 pb-0 gap-0' : ''
+                              }`}>
+                                <p className={`font-black text-white group-hover:text-amber-400 uppercase tracking-wide truncate transition-colors text-center w-full ${
+                                  isMobile
+                                    ? (gridDensity === 'cozy' 
+                                        ? 'text-xs' 
+                                        : gridDensity === 'standard' 
+                                          ? 'text-[10px]' 
+                                          : 'text-[8px]')
+                                    : 'text-xs sm:text-sm'
+                                }`}>
+                                  {movie.title}
+                                </p>
+                              </div>
                             </div>
-                          </div>
+                          </Tilt>
                         ))}
                       </div>
                     )}
@@ -4749,68 +4769,69 @@ export default function App() {
                               }
 
                               return (
-                                <div
-                                  key={`subfolder-tab-${node.name}`}
-                                  onClick={() => { triggerHaptic('light'); setPhotoFolderStack(prev => [...prev, node]); }}
-                                  onKeyDown={(e) => {
-                                    if (e.key === 'Enter' || e.key === ' ') {
-                                      triggerHaptic('light');
-                                      setPhotoFolderStack(prev => [...prev, node]);
-                                    }
-                                  }}
-                                  role="button"
-                                  tabIndex={0}
-                                  className={`relative aspect-[2/3] w-full overflow-hidden border border-zinc-900 bg-zinc-950/40 hover:scale-[1.02] group transition-all duration-300 cursor-pointer focus:outline-none focus:ring-2 focus:ring-emerald-500/50 shadow-lg select-none ${
-                                    isMobile
-                                      ? (gridDensity === 'cozy' 
-                                          ? 'rounded-2xl hover:border-emerald-500/40' 
-                                          : gridDensity === 'standard' 
-                                            ? 'rounded-xl hover:border-emerald-500/30' 
-                                            : 'rounded-lg hover:border-emerald-500/20')
-                                      : 'rounded-2xl hover:border-emerald-500/40'
-                                  }`}
-                                >
-                                  {thumbnail ? (
-                                    <img
-                                      src={getOptimizedImageUrl(thumbnail, 'low')}
-                                      alt={node.name}
-                                      referrerPolicy="no-referrer"
-                                      className="absolute inset-0 w-full h-full object-cover object-[center_20%] transition-transform duration-500 group-hover:scale-105"
-                                      loading="lazy"
-                                    />
-                                  ) : (
-                                    <div className="absolute inset-0 bg-zinc-900 flex items-center justify-center">
-                                      <ImageIcon className="w-8 h-8 text-zinc-700 animate-pulse" />
-                                    </div>
-                                  )}
-                                  <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/30 to-transparent group-hover:via-black/45 transition-all duration-300" />
-                                  <div className="absolute bottom-0 left-0 right-0 flex flex-col items-center p-2.5 pb-3 sm:pb-3.5 text-center gap-1 sm:gap-1.5 z-10">
-                                    <span className={`font-black text-white group-hover:text-emerald-400 transition-colors uppercase tracking-wider line-clamp-3 leading-snug drop-shadow-lg ${
+                                <Tilt rotationFactor={8} isRevese key={`subfolder-tab-${node.name}`} className="w-full">
+                                  <div
+                                    onClick={() => { triggerHaptic('light'); setPhotoFolderStack(prev => [...prev, node]); }}
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter' || e.key === ' ') {
+                                        triggerHaptic('light');
+                                        setPhotoFolderStack(prev => [...prev, node]);
+                                      }
+                                    }}
+                                    role="button"
+                                    tabIndex={0}
+                                    className={`relative aspect-[2/3] w-full overflow-hidden border border-zinc-900 bg-zinc-950/40 hover:scale-[1.02] group transition-all duration-300 cursor-pointer focus:outline-none focus:ring-2 focus:ring-emerald-500/50 shadow-lg select-none ${
                                       isMobile
                                         ? (gridDensity === 'cozy' 
-                                            ? 'text-xs sm:text-sm md:text-base' 
+                                            ? 'rounded-2xl hover:border-emerald-500/40' 
                                             : gridDensity === 'standard' 
-                                              ? 'text-[10px] sm:text-[11px] md:text-xs' 
-                                              : 'text-[8px] sm:text-[9px]')
-                                        : 'text-xs sm:text-sm md:text-base'
-                                    }`}>
-                                      {node.name.replace(/_/g, ' ')}
-                                    </span>
-                                    <div className="flex items-center justify-center">
-                                      <span className={`font-semibold shrink-0 bg-black/40 text-zinc-300 border border-white/10 backdrop-blur-[2px] shadow-sm uppercase ${
+                                              ? 'rounded-xl hover:border-emerald-500/30' 
+                                              : 'rounded-lg hover:border-emerald-500/20')
+                                        : 'rounded-2xl hover:border-emerald-500/40'
+                                    }`}
+                                  >
+                                    {thumbnail ? (
+                                      <img
+                                        src={getOptimizedImageUrl(thumbnail, 'low')}
+                                        alt={node.name}
+                                        referrerPolicy="no-referrer"
+                                        className="absolute inset-0 w-full h-full object-cover object-[center_20%] transition-transform duration-500 group-hover:scale-105"
+                                        loading="lazy"
+                                      />
+                                    ) : (
+                                      <div className="absolute inset-0 bg-zinc-900 flex items-center justify-center">
+                                        <ImageIcon className="w-8 h-8 text-zinc-700 animate-pulse" />
+                                      </div>
+                                    )}
+                                    <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/30 to-transparent group-hover:via-black/45 transition-all duration-300" />
+                                    <div className="absolute bottom-0 left-0 right-0 flex flex-col items-center p-2.5 pb-3 sm:pb-3.5 text-center gap-1 sm:gap-1.5 z-10">
+                                      <span className={`font-black text-white group-hover:text-emerald-400 transition-colors uppercase tracking-wider line-clamp-3 leading-snug drop-shadow-lg ${
                                         isMobile
-                                          ? (gridDensity === 'cozy'
-                                              ? 'text-[9px] px-2 py-0.5 rounded-full font-semibold tracking-wide'
-                                              : gridDensity === 'standard'
-                                                ? 'text-[8px] px-1.5 py-0.5 rounded-md font-bold'
-                                                : 'text-[7px] px-1 py-0.5 rounded-sm font-extrabold')
-                                          : 'text-[9px] px-2 py-0.5 rounded-full font-semibold tracking-wide'
+                                          ? (gridDensity === 'cozy' 
+                                              ? 'text-xs sm:text-sm md:text-base' 
+                                              : gridDensity === 'standard' 
+                                                ? 'text-[10px] sm:text-[11px] md:text-xs' 
+                                                : 'text-[8px] sm:text-[9px]')
+                                          : 'text-xs sm:text-sm md:text-base'
                                       }`}>
-                                        {count} Photos
+                                        {node.name.replace(/_/g, ' ')}
                                       </span>
+                                      <div className="flex items-center justify-center">
+                                        <span className={`font-semibold shrink-0 bg-black/40 text-zinc-300 border border-white/10 backdrop-blur-[2px] shadow-sm uppercase ${
+                                          isMobile
+                                            ? (gridDensity === 'cozy'
+                                                ? 'text-[9px] px-2 py-0.5 rounded-full font-semibold tracking-wide'
+                                                : gridDensity === 'standard'
+                                                  ? 'text-[8px] px-1.5 py-0.5 rounded-md font-bold'
+                                                  : 'text-[7px] px-1 py-0.5 rounded-sm font-extrabold')
+                                            : 'text-[9px] px-2 py-0.5 rounded-full font-semibold tracking-wide'
+                                        }`}>
+                                          {count} Photos
+                                        </span>
+                                      </div>
                                     </div>
                                   </div>
-                                </div>
+                                </Tilt>
                               );
                             })}
                           </div>
@@ -4856,37 +4877,38 @@ export default function App() {
                               {displayPhotos.map((photo: any) => {
                                 const isSelected = isMobile && isSelectMode && selectedItems.some(x => x.id === photo.id);
                                 return (
-                                  <div 
-                                    key={photo.id}
-                                    onClick={() => {
-                                      if (isMobile && isSelectMode) {
-                                        toggleSelection(photo, 'photo');
-                                      } else {
-                                        setActiveMediaItem(photo);
-                                        setActiveMediaList(displayPhotos);
-                                      }
-                                    }}
-                                    className={`break-inside-avoid relative inline-block w-full rounded-2xl overflow-hidden border border-zinc-900 bg-zinc-950/80 hover:border-emerald-500/50 hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 cursor-pointer shadow-lg group mb-2 sm:mb-3 ${
-                                      isSelected ? 'ring-2 ring-amber-500 scale-[0.96]' : ''
-                                    }`}
-                                  >
-                                    <img 
-                                      src={getOptimizedImageUrl(photo.imageUrl, 'low')} 
-                                      alt={photo.title} 
-                                      referrerPolicy="no-referrer"
-                                      className="w-full h-auto object-contain transition-transform duration-500 group-hover:scale-105"
-                                      loading="lazy"
-                                    />
+                                  <Tilt rotationFactor={8} isRevese key={photo.id} className="break-inside-avoid w-full mb-2 sm:mb-3">
+                                    <div 
+                                      onClick={() => {
+                                        if (isMobile && isSelectMode) {
+                                          toggleSelection(photo, 'photo');
+                                        } else {
+                                          setActiveMediaItem(photo);
+                                          setActiveMediaList(displayPhotos);
+                                        }
+                                      }}
+                                      className={`relative inline-block w-full rounded-2xl overflow-hidden border border-zinc-900 bg-zinc-950/80 hover:border-emerald-500/50 hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 cursor-pointer shadow-lg group ${
+                                        isSelected ? 'ring-2 ring-amber-500 scale-[0.96]' : ''
+                                      }`}
+                                    >
+                                      <img 
+                                        src={getOptimizedImageUrl(photo.imageUrl, 'low')} 
+                                        alt={photo.title} 
+                                        referrerPolicy="no-referrer"
+                                        className="w-full h-auto object-contain transition-transform duration-500 group-hover:scale-105"
+                                        loading="lazy"
+                                      />
 
-                                    {/* Selection indicator circle checkbox */}
-                                    {isMobile && isSelectMode && (
-                                      <div className="absolute top-2 right-2 z-30 w-5 h-5 rounded-full flex items-center justify-center border-2 border-white bg-black/50 shadow-md">
-                                        {isSelected && (
-                                          <div className="w-2.5 h-2.5 rounded-full bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.6)]" />
-                                        )}
-                                      </div>
-                                    )}
-                                  </div>
+                                      {/* Selection indicator circle checkbox */}
+                                      {isMobile && isSelectMode && (
+                                        <div className="absolute top-2 right-2 z-30 w-5 h-5 rounded-full flex items-center justify-center border-2 border-white bg-black/50 shadow-md">
+                                          {isSelected && (
+                                            <div className="w-2.5 h-2.5 rounded-full bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.6)]" />
+                                          )}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </Tilt>
                                 );
                               })}
                             </div>
@@ -5033,35 +5055,36 @@ export default function App() {
                             {activeNode.files.map((photo: any) => {
                               const isSelected = isMobile && isSelectMode && selectedItems.some(x => x.id === photo.id);
                               return (
-                                <div 
-                                  key={photo.id}
-                                  onClick={() => {
-                                    if (isMobile && isSelectMode) {
-                                      toggleSelection(photo, 'photo');
-                                    } else {
-                                      setActiveMediaItem(photo);
-                                      setActiveMediaList(activeNode.files);
-                                    }
-                                  }}
-                                  className={`break-inside-avoid relative inline-block w-full rounded-2xl overflow-hidden border border-zinc-900 bg-zinc-950/80 hover:border-emerald-500/50 hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 cursor-pointer shadow-lg group mb-2 sm:mb-3 ${
-                                    isSelected ? 'ring-2 ring-amber-500 scale-[0.96]' : ''
-                                  }`}
-                                >
-                                  <img 
-                                    src={getOptimizedImageUrl(photo.imageUrl, 'low')} 
-                                    alt={photo.title} 
-                                    referrerPolicy="no-referrer"
-                                    className="w-full h-auto object-contain transition-transform duration-500 group-hover:scale-105"
-                                    loading="lazy"
-                                  />
-                                  {isMobile && isSelectMode && (
-                                    <div className="absolute top-2 right-2 z-30 w-5 h-5 rounded-full flex items-center justify-center border-2 border-white bg-black/50 shadow-md">
-                                      {isSelected && (
-                                        <div className="w-2.5 h-2.5 rounded-full bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.6)]" />
-                                      )}
-                                    </div>
-                                  )}
-                                </div>
+                                <Tilt rotationFactor={8} isRevese key={photo.id} className="break-inside-avoid w-full mb-2 sm:mb-3">
+                                  <div 
+                                    onClick={() => {
+                                      if (isMobile && isSelectMode) {
+                                        toggleSelection(photo, 'photo');
+                                      } else {
+                                        setActiveMediaItem(photo);
+                                        setActiveMediaList(activeNode.files);
+                                      }
+                                    }}
+                                    className={`relative inline-block w-full rounded-2xl overflow-hidden border border-zinc-900 bg-zinc-950/80 hover:border-emerald-500/50 hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 cursor-pointer shadow-lg group ${
+                                      isSelected ? 'ring-2 ring-amber-500 scale-[0.96]' : ''
+                                    }`}
+                                  >
+                                    <img 
+                                      src={getOptimizedImageUrl(photo.imageUrl, 'low')} 
+                                      alt={photo.title} 
+                                      referrerPolicy="no-referrer"
+                                      className="w-full h-auto object-contain transition-transform duration-500 group-hover:scale-105"
+                                      loading="lazy"
+                                    />
+                                    {isMobile && isSelectMode && (
+                                      <div className="absolute top-2 right-2 z-30 w-5 h-5 rounded-full flex items-center justify-center border-2 border-white bg-black/50 shadow-md">
+                                        {isSelected && (
+                                          <div className="w-2.5 h-2.5 rounded-full bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.6)]" />
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
+                                </Tilt>
                               );
                             })}
                           </div>
@@ -5129,7 +5152,7 @@ export default function App() {
                         <h4 className="text-sm font-bold text-zinc-400">No videos found under this folder</h4>
                       </div>
                     ) : (
-                      renderVideosGrid(videosInFolder, 'cyan', true)
+                      renderVideosGrid(videosInFolder, 'cyan', false)
                     )}
                   </div>
                 );
@@ -5168,7 +5191,7 @@ export default function App() {
                     const subFolders = (Object.values(activeNode.folders) as FolderNode[]).filter((node: FolderNode) => {
                       if (!searchQuery) return true;
                       return node.name.toLowerCase().includes(searchQuery.toLowerCase());
-                    }).sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+                    }).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
 
                     const directVideos = activeNode.files.filter((v) => {
                       if (!searchQuery) return true;
@@ -5222,89 +5245,90 @@ export default function App() {
                                     ? getVideoFolderThumbnail(node.name, recFiles.map(f => ({ imageUrl: f.imageUrl || f.videoUrl } as any)), assignedUrls)
                                     : getFolderThumbnail(node.name, recFiles.map(f => ({ imageUrl: f.imageUrl || f.videoUrl } as any)), assignedUrls, 'videocuts');
                                   return (
-                                    <div
-                                      key={`folder-tab-${videoCutsFirstLevel}-${node.name}`}
-                                      onClick={() => { triggerHaptic('light'); setSelectedVideoCutsFolderNode(node); }}
-                                      onKeyDown={(e) => {
-                                        if (e.key === 'Enter' || e.key === ' ') {
-                                          triggerHaptic('light');
-                                          setSelectedVideoCutsFolderNode(node);
-                                        }
-                                      }}
-                                      role="button"
-                                      tabIndex={0}
-                                      className={`relative ${isSongsFolder ? 'aspect-[16/9]' : 'aspect-[2/3]'} w-full overflow-hidden border border-zinc-900 bg-zinc-950/40 hover:scale-[1.02] group transition-all duration-300 cursor-pointer focus:outline-none focus:ring-2 focus:ring-cyan-500/50 shadow-lg select-none ${
-                                        isMobile
-                                          ? (gridDensity === 'cozy' 
-                                              ? 'rounded-2xl hover:border-cyan-500/40' 
-                                              : gridDensity === 'standard' 
-                                                ? 'rounded-xl hover:border-cyan-500/30' 
-                                                : 'rounded-lg hover:border-cyan-500/20')
-                                          : 'rounded-2xl hover:border-cyan-500/40'
-                                      }`}
-                                    >
-                                      <img
-                                        src={getOptimizedImageUrl(thumbnail, 'low')}
-                                        alt={node.name}
-                                        referrerPolicy="no-referrer"
-                                        className="absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                                        loading="lazy"
-                                      />
-                                      <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/30 to-transparent group-hover:via-black/45 transition-all duration-300" />
-                                      {isSongsFolder ? (
-                                        <div className="absolute bottom-0 left-0 right-0 flex items-center justify-between gap-2 px-3 py-2.5 bg-gradient-to-t from-black/95 via-black/50 to-transparent z-10 w-full">
-                                          <span className={`font-black text-white group-hover:text-cyan-400 transition-colors uppercase tracking-wider truncate text-left drop-shadow-lg flex-1 ${
-                                            isMobile
-                                              ? (gridDensity === 'cozy' 
-                                                  ? 'text-[10px] sm:text-xs md:text-sm' 
-                                                  : gridDensity === 'standard' 
-                                                    ? 'text-[8px] sm:text-[9px] md:text-xs' 
-                                                    : 'text-[7px] sm:text-[8px]')
-                                                : 'text-[11px] sm:text-xs md:text-sm'
-                                          }`}>
-                                            {node.name.replace(/_/g, ' ')}
-                                          </span>
-                                          <span className={`font-semibold shrink-0 bg-black/60 text-zinc-300 border border-white/10 backdrop-blur-[2px] shadow-sm uppercase ${
-                                            isMobile
-                                              ? (gridDensity === 'cozy'
-                                                  ? 'text-[8px] px-1.5 py-0.5 rounded-full font-semibold tracking-wide'
-                                                  : gridDensity === 'standard'
-                                                    ? 'text-[7px] px-1 py-0.5 rounded-md font-bold'
-                                                    : 'text-[6px] px-1 py-0.5 rounded-sm font-extrabold')
-                                                : 'text-[9px] px-2 py-0.5 rounded-full font-semibold tracking-wide'
-                                          }`}>
-                                            {count} Videos
-                                          </span>
-                                        </div>
-                                      ) : (
-                                        <div className="absolute bottom-0 left-0 right-0 flex flex-col items-center p-2.5 pb-3 sm:pb-3.5 text-center gap-1 sm:gap-1.5 z-10">
-                                          <span className={`font-black text-white group-hover:text-cyan-400 transition-colors uppercase tracking-wider line-clamp-3 leading-snug drop-shadow-lg ${
-                                            isMobile
-                                              ? (gridDensity === 'cozy' 
-                                                  ? 'text-xs sm:text-sm md:text-base' 
-                                                  : gridDensity === 'standard' 
-                                                    ? 'text-[10px] sm:text-[11px] md:text-xs' 
-                                                    : 'text-[8px] sm:text-[9px]')
-                                                : 'text-xs sm:text-sm md:text-base'
-                                          }`}>
-                                            {node.name.replace(/_/g, ' ')}
-                                          </span>
-                                          <div className="flex items-center justify-center">
-                                            <span className={`font-semibold shrink-0 bg-black/40 text-zinc-300 border border-white/10 backdrop-blur-[2px] shadow-sm uppercase ${
+                                    <Tilt rotationFactor={8} isRevese key={`folder-tab-${videoCutsFirstLevel}-${node.name}`} className="w-full">
+                                      <div
+                                        onClick={() => { triggerHaptic('light'); setSelectedVideoCutsFolderNode(node); }}
+                                        onKeyDown={(e) => {
+                                          if (e.key === 'Enter' || e.key === ' ') {
+                                            triggerHaptic('light');
+                                            setSelectedVideoCutsFolderNode(node);
+                                          }
+                                        }}
+                                        role="button"
+                                        tabIndex={0}
+                                        className={`relative ${isSongsFolder ? 'aspect-[16/9]' : 'aspect-[2/3]'} w-full overflow-hidden border border-zinc-900 bg-zinc-950/40 hover:scale-[1.02] group transition-all duration-300 cursor-pointer focus:outline-none focus:ring-2 focus:ring-cyan-500/50 shadow-lg select-none ${
+                                          isMobile
+                                            ? (gridDensity === 'cozy' 
+                                                ? 'rounded-2xl hover:border-cyan-500/40' 
+                                                : gridDensity === 'standard' 
+                                                  ? 'rounded-xl hover:border-cyan-500/30' 
+                                                  : 'rounded-lg hover:border-cyan-500/20')
+                                            : 'rounded-2xl hover:border-cyan-500/40'
+                                        }`}
+                                      >
+                                        <img
+                                          src={getOptimizedImageUrl(thumbnail, 'low')}
+                                          alt={node.name}
+                                          referrerPolicy="no-referrer"
+                                          className="absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                                          loading="lazy"
+                                        />
+                                        <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/30 to-transparent group-hover:via-black/45 transition-all duration-300" />
+                                        {isSongsFolder ? (
+                                          <div className="absolute bottom-0 left-0 right-0 flex items-center justify-between gap-2 px-3 py-2.5 bg-gradient-to-t from-black/95 via-black/50 to-transparent z-10 w-full">
+                                            <span className={`font-black text-white group-hover:text-cyan-400 transition-colors uppercase tracking-wider truncate text-left drop-shadow-lg flex-1 ${
+                                              isMobile
+                                                ? (gridDensity === 'cozy' 
+                                                    ? 'text-[10px] sm:text-xs md:text-sm' 
+                                                    : gridDensity === 'standard' 
+                                                      ? 'text-[8px] sm:text-[9px] md:text-xs' 
+                                                      : 'text-[7px] sm:text-[8px]')
+                                                  : 'text-[11px] sm:text-xs md:text-sm'
+                                            }`}>
+                                              {node.name.replace(/_/g, ' ')}
+                                            </span>
+                                            <span className={`font-semibold shrink-0 bg-black/60 text-zinc-300 border border-white/10 backdrop-blur-[2px] shadow-sm uppercase ${
                                               isMobile
                                                 ? (gridDensity === 'cozy'
-                                                    ? 'text-[9px] px-2 py-0.5 rounded-full font-semibold tracking-wide'
+                                                    ? 'text-[8px] px-1.5 py-0.5 rounded-full font-semibold tracking-wide'
                                                     : gridDensity === 'standard'
-                                                      ? 'text-[8px] px-1.5 py-0.5 rounded-md font-bold'
-                                                      : 'text-[7px] px-1 py-0.5 rounded-sm font-extrabold')
+                                                      ? 'text-[7px] px-1 py-0.5 rounded-md font-bold'
+                                                      : 'text-[6px] px-1 py-0.5 rounded-sm font-extrabold')
                                                   : 'text-[9px] px-2 py-0.5 rounded-full font-semibold tracking-wide'
                                             }`}>
                                               {count} Videos
                                             </span>
                                           </div>
-                                        </div>
-                                      )}
-                                    </div>
+                                        ) : (
+                                          <div className="absolute bottom-0 left-0 right-0 flex flex-col items-center p-2.5 pb-3 sm:pb-3.5 text-center gap-1 sm:gap-1.5 z-10">
+                                            <span className={`font-black text-white group-hover:text-cyan-400 transition-colors uppercase tracking-wider line-clamp-3 leading-snug drop-shadow-lg ${
+                                              isMobile
+                                                ? (gridDensity === 'cozy' 
+                                                    ? 'text-xs sm:text-sm md:text-base' 
+                                                    : gridDensity === 'standard' 
+                                                      ? 'text-[10px] sm:text-[11px] md:text-xs' 
+                                                      : 'text-[8px] sm:text-[9px]')
+                                                  : 'text-xs sm:text-sm md:text-base'
+                                            }`}>
+                                              {node.name.replace(/_/g, ' ')}
+                                            </span>
+                                            <div className="flex items-center justify-center">
+                                              <span className={`font-semibold shrink-0 bg-black/40 text-zinc-300 border border-white/10 backdrop-blur-[2px] shadow-sm uppercase ${
+                                                isMobile
+                                                  ? (gridDensity === 'cozy'
+                                                      ? 'text-[9px] px-2 py-0.5 rounded-full font-semibold tracking-wide'
+                                                      : gridDensity === 'standard'
+                                                        ? 'text-[8px] px-1.5 py-0.5 rounded-md font-bold'
+                                                        : 'text-[7px] px-1 py-0.5 rounded-sm font-extrabold')
+                                                    : 'text-[9px] px-2 py-0.5 rounded-full font-semibold tracking-wide'
+                                              }`}>
+                                                {count} Videos
+                                              </span>
+                                            </div>
+                                          </div>
+                                        )}
+                                      </div>
+                                    </Tilt>
                                   );
                                 });
                               })()}
@@ -5317,7 +5341,7 @@ export default function App() {
                             {subFolders.length > 0 && (
                               <h3 className="text-[10px] font-black uppercase tracking-widest text-zinc-500 mb-1 border-t border-zinc-900/50 pt-4">Videos</h3>
                             )}
-                            {renderVideosGrid(directVideos, 'cyan', true)}
+                            {renderVideosGrid(directVideos, 'cyan', false)}
                           </div>
                         )}
                       </div>
@@ -5422,7 +5446,7 @@ export default function App() {
                     const subFolders = (Object.values(activeNode.folders) as FolderNode[]).filter((node: FolderNode) => {
                       if (!searchQuery) return true;
                       return node.name.toLowerCase().includes(searchQuery.toLowerCase());
-                    }).sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+                    }).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
 
                     const directVideos = activeNode.files.filter((v) => {
                       if (!searchQuery) return true;
@@ -5467,72 +5491,73 @@ export default function App() {
                                   const videoFile = isCelebrationTab ? recFiles.find(f => f.videoUrl) : null;
                                   const videoThumbUrl = videoFile?.videoUrl;
                                   return (
-                                    <div
-                                      key={`folder-tab-${offlineSubTab}-${node.name}`}
-                                      onClick={() => { triggerHaptic('light'); setSelectedVideosFolderNode(node); }}
-                                      onKeyDown={(e) => {
-                                        if (e.key === 'Enter' || e.key === ' ') {
-                                          triggerHaptic('light');
-                                          setSelectedVideosFolderNode(node);
-                                        }
-                                      }}
-                                      role="button"
-                                      tabIndex={0}
-                                      className={`relative aspect-[2/3] w-full overflow-hidden border border-zinc-900 bg-zinc-950/40 hover:scale-[1.02] group transition-all duration-300 cursor-pointer focus:outline-none focus:ring-2 focus:ring-rose-500/50 shadow-lg select-none ${
-                                        isMobile
-                                          ? (gridDensity === 'cozy' 
-                                              ? 'rounded-2xl hover:border-rose-500/40' 
-                                              : gridDensity === 'standard' 
-                                                ? 'rounded-xl hover:border-rose-500/30' 
-                                                : 'rounded-lg hover:border-rose-500/20')
-                                          : 'rounded-2xl hover:border-rose-500/40'
-                                      }`}
-                                    >
-                                      {isCelebrationTab && videoThumbUrl ? (
-                                        <video
-                                          src={`${videoThumbUrl}#t=1.0`}
-                                          preload="metadata"
-                                          muted
-                                          playsInline
-                                          className="absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                                        />
-                                      ) : (
-                                        <img
-                                          src={getOptimizedImageUrl(thumbnail, 'low')}
-                                          alt={node.name}
-                                          referrerPolicy="no-referrer"
-                                          className="absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                                          loading="lazy"
-                                        />
-                                      )}
-                                      <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/30 to-transparent group-hover:via-black/45 transition-all duration-300" />
-                                      <div className="absolute bottom-0 left-0 right-0 flex flex-col items-center p-2.5 pb-3 sm:pb-3.5 text-center gap-1 sm:gap-1.5 z-10">
-                                        <span className={`font-black text-white group-hover:text-rose-400 transition-colors uppercase tracking-wider line-clamp-3 leading-snug drop-shadow-lg ${
+                                    <Tilt rotationFactor={8} isRevese key={`folder-tab-${offlineSubTab}-${node.name}`} className="w-full">
+                                      <div
+                                        onClick={() => { triggerHaptic('light'); setSelectedVideosFolderNode(node); }}
+                                        onKeyDown={(e) => {
+                                          if (e.key === 'Enter' || e.key === ' ') {
+                                            triggerHaptic('light');
+                                            setSelectedVideosFolderNode(node);
+                                          }
+                                        }}
+                                        role="button"
+                                        tabIndex={0}
+                                        className={`relative aspect-[2/3] w-full overflow-hidden border border-zinc-900 bg-zinc-950/40 hover:scale-[1.02] group transition-all duration-300 cursor-pointer focus:outline-none focus:ring-2 focus:ring-rose-500/50 shadow-lg select-none ${
                                           isMobile
                                             ? (gridDensity === 'cozy' 
-                                                ? 'text-xs sm:text-sm md:text-base' 
+                                                ? 'rounded-2xl hover:border-rose-500/40' 
                                                 : gridDensity === 'standard' 
-                                                  ? 'text-[10px] sm:text-[11px] md:text-xs' 
-                                                  : 'text-[8px] sm:text-[9px]')
-                                            : 'text-xs sm:text-sm md:text-base'
-                                        }`}>
-                                          {node.name.replace(/_/g, ' ')}
-                                        </span>
-                                        <div className="flex items-center justify-center">
-                                          <span className={`font-semibold shrink-0 bg-black/40 text-zinc-300 border border-white/10 backdrop-blur-[2px] shadow-sm uppercase ${
+                                                  ? 'rounded-xl hover:border-rose-500/30' 
+                                                  : 'rounded-lg hover:border-rose-500/20')
+                                            : 'rounded-2xl hover:border-rose-500/40'
+                                        }`}
+                                      >
+                                        {isCelebrationTab && videoThumbUrl ? (
+                                          <video
+                                            src={`${videoThumbUrl}#t=1.0`}
+                                            preload="metadata"
+                                            muted
+                                            playsInline
+                                            className="absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                                          />
+                                        ) : (
+                                          <img
+                                            src={getOptimizedImageUrl(thumbnail, 'low')}
+                                            alt={node.name}
+                                            referrerPolicy="no-referrer"
+                                            className="absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                                            loading="lazy"
+                                          />
+                                        )}
+                                        <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/30 to-transparent group-hover:via-black/45 transition-all duration-300" />
+                                        <div className="absolute bottom-0 left-0 right-0 flex flex-col items-center p-2.5 pb-3 sm:pb-3.5 text-center gap-1 sm:gap-1.5 z-10">
+                                          <span className={`font-black text-white group-hover:text-rose-400 transition-colors uppercase tracking-wider line-clamp-3 leading-snug drop-shadow-lg ${
                                             isMobile
-                                              ? (gridDensity === 'cozy'
-                                                  ? 'text-[9px] px-2 py-0.5 rounded-full font-semibold tracking-wide'
-                                                  : gridDensity === 'standard'
-                                                    ? 'text-[8px] px-1.5 py-0.5 rounded-md font-bold'
-                                                    : 'text-[7px] px-1 py-0.5 rounded-sm font-extrabold')
-                                              : 'text-[9px] px-2 py-0.5 rounded-full font-semibold tracking-wide'
+                                              ? (gridDensity === 'cozy' 
+                                                  ? 'text-xs sm:text-sm md:text-base' 
+                                                  : gridDensity === 'standard' 
+                                                    ? 'text-[10px] sm:text-[11px] md:text-xs' 
+                                                    : 'text-[8px] sm:text-[9px]')
+                                              : 'text-xs sm:text-sm md:text-base'
                                           }`}>
-                                            {count} Videos
+                                            {node.name.replace(/_/g, ' ')}
                                           </span>
+                                          <div className="flex items-center justify-center">
+                                            <span className={`font-semibold shrink-0 bg-black/40 text-zinc-300 border border-white/10 backdrop-blur-[2px] shadow-sm uppercase ${
+                                              isMobile
+                                                ? (gridDensity === 'cozy'
+                                                    ? 'text-[9px] px-2 py-0.5 rounded-full font-semibold tracking-wide'
+                                                    : gridDensity === 'standard'
+                                                      ? 'text-[8px] px-1.5 py-0.5 rounded-md font-bold'
+                                                      : 'text-[7px] px-1 py-0.5 rounded-sm font-extrabold')
+                                                : 'text-[9px] px-2 py-0.5 rounded-full font-semibold tracking-wide'
+                                            }`}>
+                                              {count} Videos
+                                            </span>
+                                          </div>
                                         </div>
                                       </div>
-                                    </div>
+                                    </Tilt>
                                   );
                                 });
                               })()}
@@ -5584,84 +5609,85 @@ export default function App() {
                         : 'grid-cols-4 gap-2 sm:gap-3'
                   }`}>
                     {getAllFavorites().map(({ type, item }) => (
-                      <div 
-                        key={item.id}
-                        className="group clay-card overflow-hidden hover:border-red-500/40 transition-all duration-300 flex flex-col justify-between"
-                      >
+                      <Tilt rotationFactor={8} isRevese key={item.id} className="w-full">
                         <div 
-                          onClick={() => {
-                            if (type === 'song') {
-                              handlePlaySong(item);
-                            } else {
-                              setActiveMediaItem(item);
-                              setActiveMediaList(getAllFavorites().map(f => f.item));
-                            }
-                          }}
-                          className="h-48 relative bg-zinc-900 flex items-center justify-center overflow-hidden cursor-pointer"
+                          className="group clay-card overflow-hidden hover:border-red-500/40 transition-all duration-300 flex flex-col justify-between"
                         >
-                          {type === 'photo' ? (
-                            <img src={getOptimizedImageUrl(item.imageUrl, 'low')} alt={item.title} referrerPolicy="no-referrer" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
-                          ) : type === 'movie' ? (
-                            <img src={getOptimizedImageUrl(item.posterUrl, 'low')} alt={item.title} referrerPolicy="no-referrer" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
-                          ) : type === 'song' ? (
-                            <div className="absolute inset-0 bg-gradient-to-br from-zinc-950 via-zinc-900 to-amber-950/20 flex flex-col items-center justify-center p-6 text-center group">
-                              <div className={`w-16 h-16 rounded-full bg-zinc-950 border-2 border-zinc-800 flex items-center justify-center shadow-2xl relative transition-all duration-500 ${currentAudioSong?.id === item.id && isPlayingAudio ? 'animate-spin [animation-duration:8s]' : 'group-hover:scale-105'}`}>
-                                <Music className="w-6 h-6 text-amber-500" />
-                                <div className="absolute inset-0 m-auto w-4 h-4 rounded-full bg-zinc-900 border border-zinc-700" />
-                              </div>
-                              {currentAudioSong?.id === item.id && isPlayingAudio && (
-                                <div className="mt-4 flex items-center gap-[3px] h-3">
-                                  <div className="w-[3px] h-3 bg-amber-500 rounded-full animate-pulse" />
-                                  <div className="w-[3px] h-2 bg-amber-500 rounded-full animate-pulse [animation-delay:150ms]" />
-                                  <div className="w-[3px] h-3 bg-amber-500 rounded-full animate-pulse [animation-delay:300ms]" />
-                                  <div className="w-[3px] h-1.5 bg-amber-500 rounded-full animate-pulse [animation-delay:450ms]" />
+                          <div 
+                            onClick={() => {
+                              if (type === 'song') {
+                                handlePlaySong(item);
+                              } else {
+                                setActiveMediaItem(item);
+                                setActiveMediaList(getAllFavorites().map(f => f.item));
+                              }
+                            }}
+                            className="h-48 relative bg-zinc-900 flex items-center justify-center overflow-hidden cursor-pointer"
+                          >
+                            {type === 'photo' ? (
+                              <img src={getOptimizedImageUrl(item.imageUrl, 'low')} alt={item.title} referrerPolicy="no-referrer" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                            ) : type === 'movie' ? (
+                              <img src={getOptimizedImageUrl(item.posterUrl, 'low')} alt={item.title} referrerPolicy="no-referrer" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                            ) : type === 'song' ? (
+                              <div className="absolute inset-0 bg-gradient-to-br from-zinc-950 via-zinc-900 to-amber-950/20 flex flex-col items-center justify-center p-6 text-center group">
+                                <div className={`w-16 h-16 rounded-full bg-zinc-950 border-2 border-zinc-800 flex items-center justify-center shadow-2xl relative transition-all duration-500 ${currentAudioSong?.id === item.id && isPlayingAudio ? 'animate-spin [animation-duration:8s]' : 'group-hover:scale-105'}`}>
+                                  <Music className="w-6 h-6 text-amber-500" />
+                                  <div className="absolute inset-0 m-auto w-4 h-4 rounded-full bg-zinc-900 border border-zinc-700" />
                                 </div>
-                              )}
-                              <span className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest mt-3">
-                                {item.movieTitle || 'Soundtrack'}
-                              </span>
+                                {currentAudioSong?.id === item.id && isPlayingAudio && (
+                                  <div className="mt-4 flex items-center gap-[3px] h-3">
+                                    <div className="w-[3px] h-3 bg-amber-500 rounded-full animate-pulse" />
+                                    <div className="w-[3px] h-2 bg-amber-500 rounded-full animate-pulse [animation-delay:150ms]" />
+                                    <div className="w-[3px] h-3 bg-amber-500 rounded-full animate-pulse [animation-delay:300ms]" />
+                                    <div className="w-[3px] h-1.5 bg-amber-500 rounded-full animate-pulse [animation-delay:450ms]" />
+                                  </div>
+                                )}
+                                <span className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest mt-3">
+                                  {item.movieTitle || 'Soundtrack'}
+                                </span>
+                              </div>
+                            ) : (
+                              <>
+                                 {(item.videoUrl && item.videoUrl.startsWith('http')) ? (
+                                  <div className="absolute inset-0 bg-zinc-900 flex flex-col items-center justify-center p-4 text-center">
+                                    <Video className="w-8 h-8 text-red-500/40 mb-2" />
+                                    <span className="text-xs font-mono text-zinc-500 truncate max-w-full">Direct Stream</span>
+                                  </div>
+                                ) : (
+                                  <img src={item.videoUrl ? `https://img.youtube.com/vi/${item.videoUrl}/0.jpg` : null} alt={item.title} referrerPolicy="no-referrer" className="w-full h-full object-cover group-hover:scale-105" />
+                                )}
+                                <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                                  <div className="w-10 h-10 rounded-full bg-red-500 text-white flex items-center justify-center shadow-lg">
+                                    <Play className="w-4 h-4 fill-white ml-0.5" />
+                                  </div>
+                                </div>
+                              </>
+                            )}
+                            
+                            <div className="absolute top-3 left-3 z-10 bg-red-500 text-zinc-50 text-[9px] font-extrabold px-1.5 py-0.5 rounded tracking-wider uppercase shadow-md select-none">
+                              {type}
                             </div>
-                          ) : (
-                            <>
-                               {(item.videoUrl && item.videoUrl.startsWith('http')) ? (
-                                <div className="absolute inset-0 bg-zinc-900 flex flex-col items-center justify-center p-4 text-center">
-                                  <Video className="w-8 h-8 text-red-500/40 mb-2" />
-                                  <span className="text-xs font-mono text-zinc-500 truncate max-w-full">Direct Stream</span>
-                                </div>
-                              ) : (
-                                <img src={item.videoUrl ? `https://img.youtube.com/vi/${item.videoUrl}/0.jpg` : null} alt={item.title} referrerPolicy="no-referrer" className="w-full h-full object-cover group-hover:scale-105" />
-                              )}
-                              <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
-                                <div className="w-10 h-10 rounded-full bg-red-500 text-white flex items-center justify-center shadow-lg">
-                                  <Play className="w-4 h-4 fill-white ml-0.5" />
-                                </div>
-                              </div>
-                            </>
-                          )}
-                          
-                          <div className="absolute top-3 left-3 z-10 bg-red-500 text-zinc-50 text-[9px] font-extrabold px-1.5 py-0.5 rounded tracking-wider uppercase shadow-md select-none">
-                            {type}
+
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleFavorite(item.id);
+                              }}
+                              className="absolute top-3 right-3 z-10 p-2 sm:p-2.5 rounded-full bg-black/70 hover:bg-black/90 text-rose-500 hover:text-rose-400 border border-zinc-800/60 hover:border-rose-500/50 hover:scale-110 active:scale-95 transition-all duration-300 shadow-xl cursor-pointer group backdrop-blur-sm"
+                              title="Unlike & Remove"
+                              aria-label="Unlike & Remove"
+                            >
+                              <Heart className="w-4.5 h-4.5 fill-current transition-transform duration-200" />
+                            </button>
                           </div>
 
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              toggleFavorite(item.id);
-                            }}
-                            className="absolute top-3 right-3 z-10 p-2 sm:p-2.5 rounded-full bg-black/70 hover:bg-black/90 text-rose-500 hover:text-rose-400 border border-zinc-800/60 hover:border-rose-500/50 hover:scale-110 active:scale-95 transition-all duration-300 shadow-xl cursor-pointer group backdrop-blur-sm"
-                            title="Unlike & Remove"
-                            aria-label="Unlike & Remove"
-                          >
-                            <Heart className="w-4.5 h-4.5 fill-current transition-transform duration-200" />
-                          </button>
+                          <div className="p-4">
+                            <h4 className="text-sm font-bold text-zinc-100 group-hover:text-red-400 transition-colors truncate">
+                              {item.title}
+                            </h4>
+                          </div>
                         </div>
-
-                        <div className="p-4">
-                          <h4 className="text-sm font-bold text-zinc-100 group-hover:text-red-400 transition-colors truncate">
-                            {item.title}
-                          </h4>
-                        </div>
-                      </div>
+                      </Tilt>
                     ))}
                   </div>
                 )}

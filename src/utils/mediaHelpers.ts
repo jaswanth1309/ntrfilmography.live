@@ -114,7 +114,7 @@ export function sortCategoryKeys(keys: string[]): string[] {
     if (rankA !== rankB) {
       return rankA - rankB;
     }
-    return a.localeCompare(b);
+    return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
   });
 }
 
