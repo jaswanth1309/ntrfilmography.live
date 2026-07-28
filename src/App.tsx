@@ -1128,6 +1128,83 @@ export default function App() {
     window.history.back();
   };
 
+  // Professional search collection and matching helpers
+  const collectAlbumFolderNodes = (
+    rootTree: any
+  ): { name: string; displayName: string; node: FolderNode; firstLevel: string; parentName?: string }[] => {
+    if (!rootTree || !rootTree.folders) return [];
+    const list: { name: string; displayName: string; node: FolderNode; firstLevel: string; parentName?: string }[] = [];
+    const seen = new Set<string>();
+
+    const walk = (n: FolderNode, firstL: string, parentN?: string) => {
+      if (!n || !n.name) return;
+
+      const key = `${firstL}:${n.name.toLowerCase()}:${parentN || ''}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+
+        const categoryLabel = firstL.replace(/[-_]/g, ' ').trim();
+        const parentLabel = parentN ? parentN.replace(/[-_]/g, ' ').trim() : '';
+        const nodeLabel = n.name.replace(/[-_]/g, ' ').trim();
+
+        let displayName = nodeLabel;
+        if (parentLabel && parentLabel.toLowerCase() !== categoryLabel.toLowerCase() && !nodeLabel.toLowerCase().includes(parentLabel.toLowerCase())) {
+          displayName = `${parentLabel} - ${nodeLabel}`;
+        } else if (categoryLabel.toLowerCase() !== nodeLabel.toLowerCase() && !nodeLabel.toLowerCase().includes(categoryLabel.toLowerCase())) {
+          displayName = `${categoryLabel} - ${nodeLabel}`;
+        }
+
+        list.push({
+          name: n.name,
+          displayName,
+          node: n,
+          firstLevel: firstL,
+          parentName: parentN
+        });
+      }
+
+      if (n.folders && Object.keys(n.folders).length > 0) {
+        Object.values(n.folders).forEach(child => walk(child as FolderNode, firstL, n.name));
+      }
+    };
+
+    Object.entries(rootTree.folders).forEach(([firstKey, firstNode]) => {
+      const mainNode = firstNode as FolderNode;
+      if (!mainNode) return;
+
+      const hasChildFolders = mainNode.folders && Object.keys(mainNode.folders).length > 0;
+      if (hasChildFolders) {
+        Object.values(mainNode.folders).forEach(child => walk(child as FolderNode, firstKey, mainNode.name));
+      }
+      
+      const hasFiles = mainNode.files && mainNode.files.length > 0;
+      if (!hasChildFolders || hasFiles) {
+        walk(mainNode, firstKey);
+      }
+    });
+
+    return list;
+  };
+
+  const isFolderMatch = (f: { name: string; displayName: string; node: FolderNode; firstLevel: string; parentName?: string }, query: string): boolean => {
+    if (!query) return true;
+    const q = query.toLowerCase().trim();
+    if (!q) return true;
+
+    if (f.displayName.toLowerCase().includes(q)) return true;
+    if (f.name.toLowerCase().includes(q)) return true;
+    if (f.firstLevel.toLowerCase().includes(q)) return true;
+    if (f.firstLevel.replace(/[-_]/g, ' ').toLowerCase().includes(q)) return true;
+    if (f.parentName && f.parentName.toLowerCase().includes(q)) return true;
+    if (f.parentName && f.parentName.replace(/[-_]/g, ' ').toLowerCase().includes(q)) return true;
+
+    const files = getAllFilesRecursive(f.node);
+    return files.some(file => {
+      const title = (file.title || file.name || '').toLowerCase();
+      return title.includes(q);
+    });
+  };
+
   useEffect(() => {
     if (parsedBucketData) {
       const pFirstKeys = sortCategoryKeys(Object.keys(parsedBucketData.photos.folders));
@@ -3866,9 +3943,7 @@ export default function App() {
                             onChange={(e) => {
                               const val = e.target.value;
                               setSearchDraft(val);
-                              if (val.trim() === '') {
-                                setSearchQuery('');
-                              }
+                              setSearchQuery(val);
                             }}
                             onKeyDown={(e) => {
                               if (e.key === 'Enter') {
@@ -3901,83 +3976,6 @@ export default function App() {
                           {/* Dynamic & Section-Specific Search Suggestions Dropdown */}
                           {isSearchFocused && searchDraft.trim().length > 0 && (() => {
                             const query = searchDraft.toLowerCase().trim();
-
-                            const isMainCategoryContainerName = (name: string): boolean => {
-                              if (!name) return false;
-                              const clean = name.toLowerCase().replace(/[-_]/g, ' ').trim();
-                              return [
-                                'movies', 'movie', 'offline', 'events', 'event', 'photos', 'photo', 
-                                'videos', 'video', 'video cuts', 'video cut', 'cuts', 'cut', 'all', 'main'
-                              ].includes(clean);
-                            };
-
-                            const isMovieTitleName = (name: string): boolean => {
-                              if (!name) return false;
-                              const cleanName = name.toLowerCase().replace(/[-_]/g, ' ').trim();
-                              return MOVIES.some(m => {
-                                const t = m.title.toLowerCase().replace(/[-_]/g, ' ').trim();
-                                const ot = m.originalTitle.toLowerCase().replace(/[-_]/g, ' ').trim();
-                                const s = m.slug.toLowerCase().replace(/[-_]/g, ' ').trim();
-                                return cleanName === t || cleanName === ot || cleanName === s;
-                              });
-                            };
-
-                            const isRootFolderOrMovie = (node: FolderNode): boolean => {
-                              if (!node || !node.name) return false;
-                              if (isMainCategoryContainerName(node.name)) return true;
-                              const hasChildFolders = node.folders && Object.keys(node.folders).length > 0;
-                              if (isMovieTitleName(node.name) && hasChildFolders) return true;
-                              return false;
-                            };
-
-                            // Collect only specific sub-folders (strictly excluding top-level category containers like BIRTHDAY_EDITS, FAN_EDITS, MOVIES, OFFLINE, EVENTS, etc.)
-                            const collectAlbumFolderNodes = (
-                              rootTree: any
-                            ): { name: string; displayName: string; node: FolderNode; firstLevel: string; parentName?: string }[] => {
-                              if (!rootTree || !rootTree.folders) return [];
-                              const list: { name: string; displayName: string; node: FolderNode; firstLevel: string; parentName?: string }[] = [];
-                              const seen = new Set<string>();
-
-                              const walk = (n: FolderNode, firstL: string, parentN?: string) => {
-                                if (!n || !n.name) return;
-
-                                const key = `${firstL}:${n.name.toLowerCase()}:${parentN || ''}`;
-                                if (!seen.has(key)) {
-                                  seen.add(key);
-                                  const parentLabel = parentN && parentN.toLowerCase() !== firstL.toLowerCase() ? parentN.replace(/_/g, ' ') : '';
-                                  const nodeLabel = n.name.replace(/_/g, ' ');
-                                  
-                                  let displayName = nodeLabel;
-                                  if (parentLabel && !nodeLabel.toLowerCase().includes(parentLabel.toLowerCase())) {
-                                    displayName = `${parentLabel} - ${nodeLabel}`;
-                                  }
-
-                                  list.push({
-                                    name: n.name,
-                                    displayName,
-                                    node: n,
-                                    firstLevel: firstL,
-                                    parentName: parentN
-                                  });
-                                }
-
-                                if (n.folders && Object.keys(n.folders).length > 0) {
-                                  Object.values(n.folders).forEach(child => walk(child as FolderNode, firstL, n.name));
-                                }
-                              };
-
-                              // Strictly walk ONLY child folders inside top-level category containers (e.g. skip top-level "BIRTHDAY_EDITS", "FAN_EDITS", "MOVIES", "EVENTS", etc.)
-                              Object.entries(rootTree.folders).forEach(([firstKey, firstNode]) => {
-                                const mainNode = firstNode as FolderNode;
-                                if (!mainNode) return;
-
-                                if (mainNode.folders && Object.keys(mainNode.folders).length > 0) {
-                                  Object.values(mainNode.folders).forEach(child => walk(child as FolderNode, firstKey, mainNode.name));
-                                }
-                              });
-
-                              return list;
-                            };
 
                             if (currentView === 'movies' || currentView === 'home') {
                               const allM = getAllMovies();
@@ -4071,12 +4069,7 @@ export default function App() {
 
                             if (currentView === 'photos') {
                               const photoFolders = collectAlbumFolderNodes(parsedBucketData?.photos);
-                              const matchedFolders = photoFolders.filter(f => 
-                                f.displayName.toLowerCase().includes(query) || 
-                                f.name.toLowerCase().includes(query) ||
-                                f.firstLevel.toLowerCase().includes(query) ||
-                                f.firstLevel.replace(/_/g, ' ').toLowerCase().includes(query)
-                              ).slice(0, 8);
+                              const matchedFolders = photoFolders.filter(f => isFolderMatch(f, query)).slice(0, 8);
 
                               if (matchedFolders.length === 0) return null;
 
@@ -4126,12 +4119,7 @@ export default function App() {
 
                             if (currentView === 'cuts') {
                               const cutFolders = collectAlbumFolderNodes(parsedBucketData?.videoCuts);
-                              const matchedFolders = cutFolders.filter(f => 
-                                f.displayName.toLowerCase().includes(query) || 
-                                f.name.toLowerCase().includes(query) ||
-                                f.firstLevel.toLowerCase().includes(query) ||
-                                f.firstLevel.replace(/_/g, ' ').toLowerCase().includes(query)
-                              ).slice(0, 8);
+                              const matchedFolders = cutFolders.filter(f => isFolderMatch(f, query)).slice(0, 8);
 
                               if (matchedFolders.length === 0) return null;
 
@@ -4175,12 +4163,7 @@ export default function App() {
 
                             if (currentView === 'offline') {
                               const videoFolders = collectAlbumFolderNodes(parsedBucketData?.videos);
-                              const matchedFolders = videoFolders.filter(f => 
-                                f.displayName.toLowerCase().includes(query) || 
-                                f.name.toLowerCase().includes(query) ||
-                                f.firstLevel.toLowerCase().includes(query) ||
-                                f.firstLevel.replace(/_/g, ' ').toLowerCase().includes(query)
-                              ).slice(0, 8);
+                              const matchedFolders = videoFolders.filter(f => isFolderMatch(f, query)).slice(0, 8);
 
                               if (matchedFolders.length === 0) return null;
 
@@ -5219,6 +5202,8 @@ export default function App() {
                 );
               }
 
+
+
               // Otherwise show list of sub-folders (second-level folders)
               return (
                 <div id="photos-grid" className="flex flex-col gap-6">
@@ -5456,6 +5441,8 @@ export default function App() {
                   </div>
                 );
               }
+
+
 
               // Otherwise show folder tabs if they exist, or direct files
               return (
@@ -5711,6 +5698,8 @@ export default function App() {
                   </div>
                 );
               }
+
+
 
               // Otherwise show folder tabs if they exist, or direct files
               return (
