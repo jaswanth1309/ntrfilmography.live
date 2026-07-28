@@ -53,7 +53,7 @@ A web application for exploring the filmography, media, and discography of actor
 
 1. Clone the repository:
    ```bash
-   git clone <https://github.com/jaswanth1309/ntrfilmography.live.git>
+   git clone <repository-url>
    cd ntrfilmography
    ```
 

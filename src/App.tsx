@@ -3876,7 +3876,14 @@ export default function App() {
                                 setIsSearchFocused(false);
                               }
                             }}
-                            placeholder="Search..."
+                            placeholder={
+                              currentView === 'movies' ? 'Search movies & soundtracks...' :
+                              currentView === 'photos' ? 'Search photo albums & folder names...' :
+                              currentView === 'cuts' ? 'Search video cut folders & cuts...' :
+                              currentView === 'offline' ? 'Search offline video folders...' :
+                              currentView === 'favorites' ? 'Search starred favorites...' :
+                              'Search across all sections...'
+                            }
                             className="w-full bg-zinc-950/30 backdrop-blur-md border border-white/10 focus:border-amber-500/50 rounded-xl py-2 pl-9 pr-4 text-xs text-white placeholder-zinc-500 outline-none transition-all shadow-[inset_0_1px_1px_rgba(255,255,255,0.05)] focus:shadow-[0_0_15px_rgba(245,158,11,0.15),inset_0_1px_1px_rgba(255,255,255,0.05)] h-[34px]"
                           />
                           {searchDraft && (
@@ -3891,98 +3898,390 @@ export default function App() {
                             </button>
                           )}
 
-                          {/* Dynamic & Advanced Suggestions Dropdown (Glassmorphism design) */}
+                          {/* Dynamic & Section-Specific Search Suggestions Dropdown */}
                           {isSearchFocused && searchDraft.trim().length > 0 && (() => {
-                            const allM = getAllMovies();
                             const query = searchDraft.toLowerCase().trim();
-                            const matchedMovies = allM.filter(m => 
-                              m.title.toLowerCase().includes(query) || 
-                              m.originalTitle.toLowerCase().includes(query)
-                            ).slice(0, 5);
 
-                            const matchedSongs = allM.flatMap(m => 
-                              (m.songs || []).map(s => ({ ...s, movie: m }))
-                            ).filter(s => 
-                              s.title.toLowerCase().includes(query) || 
-                              s.singers.toLowerCase().includes(query)
-                            ).slice(0, 5);
+                            const isMainCategoryContainerName = (name: string): boolean => {
+                              if (!name) return false;
+                              const clean = name.toLowerCase().replace(/[-_]/g, ' ').trim();
+                              return [
+                                'movies', 'movie', 'offline', 'events', 'event', 'photos', 'photo', 
+                                'videos', 'video', 'video cuts', 'video cut', 'cuts', 'cut', 'all', 'main'
+                              ].includes(clean);
+                            };
 
-                            if (matchedMovies.length === 0 && matchedSongs.length === 0) {
-                              return null;
+                            const isMovieTitleName = (name: string): boolean => {
+                              if (!name) return false;
+                              const cleanName = name.toLowerCase().replace(/[-_]/g, ' ').trim();
+                              return MOVIES.some(m => {
+                                const t = m.title.toLowerCase().replace(/[-_]/g, ' ').trim();
+                                const ot = m.originalTitle.toLowerCase().replace(/[-_]/g, ' ').trim();
+                                const s = m.slug.toLowerCase().replace(/[-_]/g, ' ').trim();
+                                return cleanName === t || cleanName === ot || cleanName === s;
+                              });
+                            };
+
+                            const isRootFolderOrMovie = (node: FolderNode): boolean => {
+                              if (!node || !node.name) return false;
+                              if (isMainCategoryContainerName(node.name)) return true;
+                              const hasChildFolders = node.folders && Object.keys(node.folders).length > 0;
+                              if (isMovieTitleName(node.name) && hasChildFolders) return true;
+                              return false;
+                            };
+
+                            // Collect only specific sub-folders (strictly excluding top-level category containers like BIRTHDAY_EDITS, FAN_EDITS, MOVIES, OFFLINE, EVENTS, etc.)
+                            const collectAlbumFolderNodes = (
+                              rootTree: any
+                            ): { name: string; displayName: string; node: FolderNode; firstLevel: string; parentName?: string }[] => {
+                              if (!rootTree || !rootTree.folders) return [];
+                              const list: { name: string; displayName: string; node: FolderNode; firstLevel: string; parentName?: string }[] = [];
+                              const seen = new Set<string>();
+
+                              const walk = (n: FolderNode, firstL: string, parentN?: string) => {
+                                if (!n || !n.name) return;
+
+                                const key = `${firstL}:${n.name.toLowerCase()}:${parentN || ''}`;
+                                if (!seen.has(key)) {
+                                  seen.add(key);
+                                  const parentLabel = parentN && parentN.toLowerCase() !== firstL.toLowerCase() ? parentN.replace(/_/g, ' ') : '';
+                                  const nodeLabel = n.name.replace(/_/g, ' ');
+                                  
+                                  let displayName = nodeLabel;
+                                  if (parentLabel && !nodeLabel.toLowerCase().includes(parentLabel.toLowerCase())) {
+                                    displayName = `${parentLabel} - ${nodeLabel}`;
+                                  }
+
+                                  list.push({
+                                    name: n.name,
+                                    displayName,
+                                    node: n,
+                                    firstLevel: firstL,
+                                    parentName: parentN
+                                  });
+                                }
+
+                                if (n.folders && Object.keys(n.folders).length > 0) {
+                                  Object.values(n.folders).forEach(child => walk(child as FolderNode, firstL, n.name));
+                                }
+                              };
+
+                              // Strictly walk ONLY child folders inside top-level category containers (e.g. skip top-level "BIRTHDAY_EDITS", "FAN_EDITS", "MOVIES", "EVENTS", etc.)
+                              Object.entries(rootTree.folders).forEach(([firstKey, firstNode]) => {
+                                const mainNode = firstNode as FolderNode;
+                                if (!mainNode) return;
+
+                                if (mainNode.folders && Object.keys(mainNode.folders).length > 0) {
+                                  Object.values(mainNode.folders).forEach(child => walk(child as FolderNode, firstKey, mainNode.name));
+                                }
+                              });
+
+                              return list;
+                            };
+
+                            if (currentView === 'movies' || currentView === 'home') {
+                              const allM = getAllMovies();
+                              const matchedMovies = allM.filter(m => 
+                                m.title.toLowerCase().includes(query) || 
+                                m.originalTitle.toLowerCase().includes(query)
+                              ).slice(0, 5);
+
+                              const matchedSongs = allM.flatMap(m => 
+                                (m.songs || []).map(s => ({ ...s, movie: m }))
+                              ).filter(s => 
+                                s.title.toLowerCase().includes(query) || 
+                                s.singers.toLowerCase().includes(query)
+                              ).slice(0, 5);
+
+                              if (matchedMovies.length === 0 && matchedSongs.length === 0) return null;
+
+                              return (
+                                <div className="absolute top-full left-0 right-0 mt-2 bg-zinc-950/90 backdrop-blur-2xl border border-white/10 rounded-xl shadow-[0_12px_40px_rgba(0,0,0,0.8)] max-h-80 overflow-y-auto z-50 divide-y divide-white/5 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
+                                  {matchedMovies.length > 0 && (
+                                    <div className="p-2">
+                                      <div className="text-[10px] uppercase font-mono font-black text-amber-500 px-2 py-1 select-none text-left">
+                                        Films ({matchedMovies.length})
+                                      </div>
+                                      {matchedMovies.map(movie => (
+                                        <div
+                                          key={`sug-movie-${movie.id}`}
+                                          onMouseDown={() => {
+                                            setCurrentView('movies');
+                                            setSelectedMovie(movie);
+                                            setSearchQuery('');
+                                            setSearchDraft('');
+                                          }}
+                                          className="flex items-center gap-3 p-2 hover:bg-white/5 rounded-lg cursor-pointer transition-colors group"
+                                        >
+                                          <img 
+                                            src={getOptimizedImageUrl(movie.posterUrl, 'low')} 
+                                            alt="" 
+                                            className="w-8 h-10 object-cover rounded border border-white/10"
+                                            referrerPolicy="no-referrer"
+                                          />
+                                          <div className="flex-1 min-w-0 text-left">
+                                            <p className="text-xs font-bold text-zinc-100 group-hover:text-amber-500 transition-colors truncate">
+                                              {movie.title}
+                                            </p>
+                                            <p className="text-[10px] text-zinc-500 font-mono">
+                                              {movie.eraCategory}
+                                            </p>
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+
+                                  {matchedSongs.length > 0 && (
+                                    <div className="p-2">
+                                      <div className="text-[10px] uppercase font-mono font-black text-emerald-500 px-2 py-1 select-none text-left">
+                                        Soundtracks & Songs ({matchedSongs.length})
+                                      </div>
+                                      {matchedSongs.map(song => (
+                                        <div
+                                          key={`sug-song-${song.id}`}
+                                          onMouseDown={() => {
+                                            setCurrentView('movies');
+                                            setSelectedMovie(song.movie);
+                                            setActiveMovieTab('songs');
+                                            handlePlaySong(song);
+                                            setSearchQuery('');
+                                            setSearchDraft('');
+                                          }}
+                                          className="flex items-center gap-3 p-2 hover:bg-white/5 rounded-lg cursor-pointer transition-colors group"
+                                        >
+                                          <div className="w-8 h-8 rounded bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center shrink-0">
+                                            <Music className="w-3.5 h-3.5 text-emerald-400 group-hover:animate-pulse" />
+                                          </div>
+                                          <div className="flex-1 min-w-0 text-left">
+                                            <p className="text-xs font-bold text-zinc-100 group-hover:text-emerald-400 transition-colors truncate">
+                                              {song.title}
+                                            </p>
+                                            <p className="text-[10px] text-zinc-500 truncate">
+                                              <span className="text-zinc-600 font-mono">from {song.movie.title}</span>
+                                            </p>
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              );
                             }
 
-                            return (
-                              <div className="absolute top-full left-0 right-0 mt-2 bg-zinc-950/60 backdrop-blur-2xl border border-white/10 rounded-xl shadow-[inset_0_1px_1.5px_rgba(255,255,255,0.15),0_12px_40px_rgba(0,0,0,0.7)] max-h-80 overflow-y-auto z-50 divide-y divide-white/5 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
-                                {matchedMovies.length > 0 && (
+                            if (currentView === 'photos') {
+                              const photoFolders = collectAlbumFolderNodes(parsedBucketData?.photos);
+                              const matchedFolders = photoFolders.filter(f => 
+                                f.displayName.toLowerCase().includes(query) || 
+                                f.name.toLowerCase().includes(query) ||
+                                f.firstLevel.toLowerCase().includes(query) ||
+                                f.firstLevel.replace(/_/g, ' ').toLowerCase().includes(query)
+                              ).slice(0, 8);
+
+                              if (matchedFolders.length === 0) return null;
+
+                              return (
+                                <div className="absolute top-full left-0 right-0 mt-2 bg-zinc-950/90 backdrop-blur-2xl border border-white/10 rounded-xl shadow-[0_12px_40px_rgba(0,0,0,0.8)] max-h-80 overflow-y-auto z-50 divide-y divide-white/5 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
                                   <div className="p-2">
-                                    <div className="text-[10px] uppercase font-mono font-black text-amber-500 px-2 py-1 select-none text-left">
-                                      Films
+                                    <div className="text-[10px] uppercase font-mono font-black text-emerald-400 px-2 py-1 select-none text-left">
+                                      Photo Albums & Folders ({matchedFolders.length})
                                     </div>
-                                    {matchedMovies.map(movie => (
+                                    {matchedFolders.map(({ name, displayName, node, firstLevel, parentName }) => (
                                       <div
-                                        key={`sug-movie-${movie.id}`}
+                                        key={`sug-photofolder-${firstLevel}-${parentName || ''}-${name}`}
                                         onMouseDown={() => {
-                                          setCurrentView('movies');
-                                          setSelectedMovie(movie);
+                                          setCurrentView('photos');
+                                          if (firstLevel && parsedBucketData?.photos?.folders[firstLevel]) {
+                                            setPhotoFirstLevel(firstLevel);
+                                          }
+                                          if (parentName && parentName !== firstLevel && parsedBucketData?.photos?.folders[firstLevel]?.folders?.[parentName]) {
+                                            setPhotoFolderStack([parsedBucketData.photos.folders[firstLevel].folders[parentName], node]);
+                                            setSelectedPhotoFolderNode(node);
+                                          } else {
+                                            setPhotoFolderStack([]);
+                                            setSelectedPhotoFolderNode(node);
+                                          }
                                           setSearchQuery('');
                                           setSearchDraft('');
                                         }}
                                         className="flex items-center gap-3 p-2 hover:bg-white/5 rounded-lg cursor-pointer transition-colors group"
                                       >
-                                        <img 
-                                          src={getOptimizedImageUrl(movie.posterUrl, 'low')} 
-                                          alt="" 
-                                          className="w-8 h-10 object-cover rounded border border-white/10"
-                                          referrerPolicy="no-referrer"
-                                        />
+                                        <div className="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center shrink-0 text-emerald-400">
+                                          <Folder className="w-4 h-4" />
+                                        </div>
                                         <div className="flex-1 min-w-0 text-left">
-                                          <p className="text-xs font-bold text-zinc-100 group-hover:text-amber-500 transition-colors truncate">
-                                            {movie.title}
+                                          <p className="text-xs font-bold text-zinc-100 group-hover:text-emerald-400 transition-colors truncate uppercase tracking-wider">
+                                            {displayName}
                                           </p>
                                           <p className="text-[10px] text-zinc-500 font-mono">
-                                            {movie.eraCategory}
+                                            {firstLevel.replace(/_/g, ' ')} • {getAllFilesRecursive(node).length} photos
                                           </p>
                                         </div>
                                       </div>
                                     ))}
                                   </div>
-                                )}
+                                </div>
+                              );
+                            }
 
-                                {matchedSongs.length > 0 && (
+                            if (currentView === 'cuts') {
+                              const cutFolders = collectAlbumFolderNodes(parsedBucketData?.videoCuts);
+                              const matchedFolders = cutFolders.filter(f => 
+                                f.displayName.toLowerCase().includes(query) || 
+                                f.name.toLowerCase().includes(query) ||
+                                f.firstLevel.toLowerCase().includes(query) ||
+                                f.firstLevel.replace(/_/g, ' ').toLowerCase().includes(query)
+                              ).slice(0, 8);
+
+                              if (matchedFolders.length === 0) return null;
+
+                              return (
+                                <div className="absolute top-full left-0 right-0 mt-2 bg-zinc-950/90 backdrop-blur-2xl border border-white/10 rounded-xl shadow-[0_12px_40px_rgba(0,0,0,0.8)] max-h-80 overflow-y-auto z-50 divide-y divide-white/5 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
                                   <div className="p-2">
-                                    <div className="text-[10px] uppercase font-mono font-black text-emerald-500 px-2 py-1 select-none text-left">
-                                      Soundtracks & Songs
+                                    <div className="text-[10px] uppercase font-mono font-black text-cyan-400 px-2 py-1 select-none text-left">
+                                      Video Cut Folders ({matchedFolders.length})
                                     </div>
-                                    {matchedSongs.map(song => (
+                                    {matchedFolders.map(({ name, displayName, node, firstLevel }) => (
                                       <div
-                                        key={`sug-song-${song.id}`}
+                                        key={`sug-cutfolder-${firstLevel}-${name}`}
                                         onMouseDown={() => {
-                                          setCurrentView('movies');
-                                          setSelectedMovie(song.movie);
-                                          setActiveMovieTab('songs');
-                                          handlePlaySong(song);
+                                          setCurrentView('cuts');
+                                          if (firstLevel && parsedBucketData?.videoCuts?.folders[firstLevel]) {
+                                            setVideoCutsFirstLevel(firstLevel);
+                                          }
+                                          setSelectedVideoCutsFolderNode(node);
                                           setSearchQuery('');
                                           setSearchDraft('');
                                         }}
                                         className="flex items-center gap-3 p-2 hover:bg-white/5 rounded-lg cursor-pointer transition-colors group"
                                       >
-                                        <div className="w-8 h-8 rounded bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center shrink-0">
-                                          <Music className="w-3.5 h-3.5 text-emerald-400 group-hover:animate-pulse" />
+                                        <div className="w-8 h-8 rounded-lg bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center shrink-0 text-cyan-400">
+                                          <Folder className="w-4 h-4" />
                                         </div>
                                         <div className="flex-1 min-w-0 text-left">
-                                          <p className="text-xs font-bold text-zinc-100 group-hover:text-emerald-400 transition-colors truncate">
-                                            {song.title}
+                                          <p className="text-xs font-bold text-zinc-100 group-hover:text-cyan-400 transition-colors truncate uppercase tracking-wider">
+                                            {displayName}
                                           </p>
-                                          <p className="text-[10px] text-zinc-500 truncate">
-                                            <span className="text-zinc-600 font-mono">from {song.movie.title}</span>
+                                          <p className="text-[10px] text-zinc-500 font-mono">
+                                            {firstLevel.replace(/_/g, ' ')} • {getAllFilesRecursive(node).length} videos
                                           </p>
                                         </div>
                                       </div>
                                     ))}
                                   </div>
-                                )}
-                              </div>
-                            );
+                                </div>
+                              );
+                            }
+
+                            if (currentView === 'offline') {
+                              const videoFolders = collectAlbumFolderNodes(parsedBucketData?.videos);
+                              const matchedFolders = videoFolders.filter(f => 
+                                f.displayName.toLowerCase().includes(query) || 
+                                f.name.toLowerCase().includes(query) ||
+                                f.firstLevel.toLowerCase().includes(query) ||
+                                f.firstLevel.replace(/_/g, ' ').toLowerCase().includes(query)
+                              ).slice(0, 8);
+
+                              if (matchedFolders.length === 0) return null;
+
+                              return (
+                                <div className="absolute top-full left-0 right-0 mt-2 bg-zinc-950/90 backdrop-blur-2xl border border-white/10 rounded-xl shadow-[0_12px_40px_rgba(0,0,0,0.8)] max-h-80 overflow-y-auto z-50 divide-y divide-white/5 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
+                                  <div className="p-2">
+                                    <div className="text-[10px] uppercase font-mono font-black text-rose-400 px-2 py-1 select-none text-left">
+                                      Video Folders ({matchedFolders.length})
+                                    </div>
+                                    {matchedFolders.map(({ name, displayName, node, firstLevel }) => (
+                                      <div
+                                        key={`sug-offfolder-${firstLevel}-${name}`}
+                                        onMouseDown={() => {
+                                          setCurrentView('offline');
+                                          if (firstLevel && parsedBucketData?.videos?.folders[firstLevel]) {
+                                            setVideosFirstLevel(firstLevel);
+                                          }
+                                          setSelectedVideosFolderNode(node);
+                                          setSearchQuery('');
+                                          setSearchDraft('');
+                                        }}
+                                        className="flex items-center gap-3 p-2 hover:bg-white/5 rounded-lg cursor-pointer transition-colors group"
+                                      >
+                                        <div className="w-8 h-8 rounded-lg bg-rose-500/10 border border-rose-500/20 flex items-center justify-center shrink-0 text-rose-400">
+                                          <Folder className="w-4 h-4" />
+                                        </div>
+                                        <div className="flex-1 min-w-0 text-left">
+                                          <p className="text-xs font-bold text-zinc-100 group-hover:text-rose-400 transition-colors truncate uppercase tracking-wider">
+                                            {displayName}
+                                          </p>
+                                          <p className="text-[10px] text-zinc-500 font-mono">
+                                            {firstLevel.replace(/_/g, ' ')} • {getAllFilesRecursive(node).length} videos
+                                          </p>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              );
+                            }
+
+                            if (currentView === 'favorites') {
+                              const allFavs = getAllFavorites();
+                              const matchedFavs = allFavs.filter(f => {
+                                const title = f.item.title || f.item.name || '';
+                                return title.toLowerCase().includes(query);
+                              }).slice(0, 8);
+
+                              if (matchedFavs.length === 0) return null;
+
+                              return (
+                                <div className="absolute top-full left-0 right-0 mt-2 bg-zinc-950/90 backdrop-blur-2xl border border-white/10 rounded-xl shadow-[0_12px_40px_rgba(0,0,0,0.8)] max-h-80 overflow-y-auto z-50 divide-y divide-white/5 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
+                                  <div className="p-2">
+                                    <div className="text-[10px] uppercase font-mono font-black text-red-400 px-2 py-1 select-none text-left flex items-center gap-1">
+                                      <Heart className="w-3 h-3 fill-red-400 text-red-400" />
+                                      <span>Favorites ({matchedFavs.length})</span>
+                                    </div>
+                                    {matchedFavs.map(fav => (
+                                      <div
+                                        key={`sug-fav-${fav.item.id}`}
+                                        onMouseDown={() => {
+                                          if (fav.type === 'movie') {
+                                            setCurrentView('movies');
+                                            setSelectedMovie(fav.item);
+                                          } else if (fav.type === 'photo') {
+                                            setCurrentView('photos');
+                                            setActiveMediaItem(fav.item);
+                                          } else if (fav.type === 'video') {
+                                            setCurrentView('cuts');
+                                            setActiveMediaItem(fav.item);
+                                          } else if (fav.type === 'song') {
+                                            setCurrentView('movies');
+                                            handlePlaySong(fav.item);
+                                          }
+                                          setSearchQuery('');
+                                          setSearchDraft('');
+                                        }}
+                                        className="flex items-center gap-3 p-2 hover:bg-white/5 rounded-lg cursor-pointer transition-colors group"
+                                      >
+                                        <div className="w-8 h-8 rounded bg-red-500/10 border border-red-500/20 flex items-center justify-center shrink-0 text-red-400">
+                                          {fav.type === 'movie' ? <Film className="w-3.5 h-3.5" /> :
+                                           fav.type === 'photo' ? <ImageIcon className="w-3.5 h-3.5" /> :
+                                           fav.type === 'song' ? <Music className="w-3.5 h-3.5" /> :
+                                           <Video className="w-3.5 h-3.5" />}
+                                        </div>
+                                        <div className="flex-1 min-w-0 text-left">
+                                          <p className="text-xs font-bold text-zinc-100 group-hover:text-red-400 transition-colors truncate">
+                                            {fav.item.title || fav.item.name}
+                                          </p>
+                                          <p className="text-[10px] text-zinc-500 font-mono capitalize">
+                                            {fav.type}
+                                          </p>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              );
+                            }
+
+                            return null;
                           })()}
                         </div>
 
