@@ -2815,10 +2815,7 @@ export default function App() {
       const folderName = getPhotoFolder(item);
       if (deletedFolders.includes(folderName)) return false;
 
-      return (
-        item.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        item.description.toLowerCase().includes(searchQuery.toLowerCase())
-      );
+      return true;
     });
   };
 
@@ -2832,12 +2829,7 @@ export default function App() {
       localVideos = VIDEOS.filter(v => v.category === 'BehindTheScenes' || v.title.toLowerCase().includes('song'));
     }
 
-    const merged = [...r2Videos, ...localVideos];
-
-    return merged.filter(item => 
-      item.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.description.toLowerCase().includes(searchQuery.toLowerCase())
-    );
+    return [...r2Videos, ...localVideos];
   };
 
   const getFilteredOfflineVideos = (): VideoType[] => {
@@ -2888,12 +2880,7 @@ export default function App() {
       ];
     }
 
-    const merged = [...r2Videos, ...localVideos];
-
-    return merged.filter(item => 
-      item.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.description.toLowerCase().includes(searchQuery.toLowerCase())
-    );
+    return [...r2Videos, ...localVideos];
   };
 
   const getAllMovies = useCallback((): Movie[] => {
@@ -2901,14 +2888,7 @@ export default function App() {
   }, [allMovies]);
 
   const getFilteredMovies = useCallback((): Movie[] => {
-    const filtered = allMovies.filter(movie => 
-      movie.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      movie.story.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      movie.originalTitle.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      movie.eraCategory.toLowerCase().includes(searchQuery.toLowerCase())
-    );
-
-    return [...filtered].sort((a, b) => {
+    return [...allMovies].sort((a, b) => {
       let valA: any;
       let valB: any;
 
@@ -2928,7 +2908,7 @@ export default function App() {
       if (valA > valB) return movieSortOrder === 'asc' ? 1 : -1;
       return 0;
     });
-  }, [allMovies, searchQuery, movieSortField, movieSortOrder]);
+  }, [allMovies, movieSortField, movieSortOrder]);
 
   // Get movies to display in the carousel (user watched movies + their neighbors in the full movies list)
   const getCarouselMovies = (allMovies: Movie[]): Movie[] => {
@@ -3943,11 +3923,9 @@ export default function App() {
                             onChange={(e) => {
                               const val = e.target.value;
                               setSearchDraft(val);
-                              setSearchQuery(val);
                             }}
                             onKeyDown={(e) => {
                               if (e.key === 'Enter') {
-                                setSearchQuery(searchDraft);
                                 setIsSearchFocused(false);
                               }
                             }}
