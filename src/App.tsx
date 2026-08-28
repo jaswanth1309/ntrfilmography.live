@@ -56,7 +56,20 @@ export default function App() {
 
   // Navigation State: 'home' is the single view root displaying 4 large cards.
   // Clicking cards sets view to 'movies' | 'photos' | 'cuts' | 'offline' | 'favorites'
-  const [currentView, setCurrentView] = useState<'home' | 'movies' | 'photos' | 'cuts' | 'offline' | 'favorites'>('home');
+  const [currentView, setCurrentView] = useState<'home' | 'movies' | 'photos' | 'cuts' | 'offline' | 'favorites'>(() => {
+    if (typeof window === 'undefined') return 'home';
+    const pathname = window.location.pathname.replace(/\/$/, '').toLowerCase();
+    const params = new URLSearchParams(window.location.search);
+    const tab = params.get('tab')?.toLowerCase();
+    const movieParam = params.get('movie');
+
+    if (pathname.startsWith('/movie') || movieParam || tab === 'movies') return 'movies';
+    if (pathname === '/photos' || pathname === '/photo' || tab === 'photos') return 'photos';
+    if (pathname === '/cuts' || pathname === '/cut' || tab === 'cuts') return 'cuts';
+    if (pathname === '/offline' || tab === 'offline') return 'offline';
+    if (pathname === '/favorites' || tab === 'favorites') return 'favorites';
+    return 'home';
+  });
   
   // Sub-tab States for inside sections
   const [photoSubTab, setPhotoSubTab] = useState<'movies' | 'events' | 'offline'>('movies');
@@ -1693,7 +1706,7 @@ export default function App() {
         else if (currentView === 'offline') targetUrl = '/offline';
         else if (currentView === 'favorites') targetUrl = '/favorites';
 
-        if (window.location.pathname.startsWith('/movie') || window.location.pathname !== targetUrl) {
+        if (window.location.pathname !== targetUrl || window.location.search) {
           if (initialRouteRef.current.isResolved) {
             window.history.replaceState(null, '', targetUrl);
           }
@@ -3159,21 +3172,21 @@ export default function App() {
         }
       });
 
-      // If we have fewer than 6 movies in the list, pad with other non-added movies to keep the carousel lively
-      if (carouselMoviesList.length < 6) {
+      // If we have fewer than 5 movies in the list, pad with other non-added movies to keep the carousel lively
+      if (carouselMoviesList.length < 5) {
         for (const movie of allMovies) {
           if (!addedIds.has(movie.id)) {
             carouselMoviesList.push(movie);
             addedIds.add(movie.id);
-            if (carouselMoviesList.length >= 6) break;
+            if (carouselMoviesList.length >= 5) break;
           }
         }
       }
 
-      return carouselMoviesList.slice(0, 8); // Keep up to 8 movies in the carousel
+      return carouselMoviesList.slice(0, 5); // Keep exactly up to 5 movies in the carousel
     } else {
-      // Fallback: take the first 6 movies if no views are tracked yet
-      return allMovies.slice(0, 6);
+      // Fallback: take the first 5 movies if no views are tracked yet
+      return allMovies.slice(0, 5);
     }
   };
 
@@ -5150,34 +5163,32 @@ export default function App() {
                         <>
                           <button
                             onClick={() => setCarouselIndex(prev => (prev - 1 + carouselMovies.length) % carouselMovies.length)}
-                            className="absolute left-4 top-1/2 -translate-y-1/2 p-2 md:p-3 rounded-full hover:bg-amber-500 hover:text-zinc-950 text-zinc-300 border border-white/10 transition-all opacity-100 md:opacity-0 md:group-hover:opacity-100 active:scale-90 flex items-center justify-center cursor-pointer shadow-xl z-20"
-                            style={{ backdropFilter: 'blur(4px)', backgroundColor: 'rgba(0,0,0,0.35)' }}
+                            className="absolute left-2.5 sm:left-4 top-1/2 -translate-y-1/2 p-1.5 sm:p-2 rounded-full bg-black/25 hover:bg-black/50 text-zinc-300 hover:text-amber-400 border border-white/10 hover:border-amber-500/40 transition-all opacity-100 md:opacity-0 md:group-hover:opacity-100 active:scale-90 flex items-center justify-center cursor-pointer shadow-lg backdrop-blur-md z-20"
                             title="Previous Slide"
                           >
-                            <ChevronLeft className="w-4 h-4 md:w-5 md:h-5" />
+                            <ChevronLeft className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                           </button>
                           <button
                             onClick={() => setCarouselIndex(prev => (prev + 1) % carouselMovies.length)}
-                            className="absolute right-4 top-1/2 -translate-y-1/2 p-2 md:p-3 rounded-full hover:bg-amber-500 hover:text-zinc-950 text-zinc-300 border border-white/10 transition-all opacity-100 md:opacity-0 md:group-hover:opacity-100 active:scale-90 flex items-center justify-center cursor-pointer shadow-xl z-20"
-                            style={{ backdropFilter: 'blur(4px)', backgroundColor: 'rgba(0,0,0,0.35)' }}
+                            className="absolute right-2.5 sm:right-4 top-1/2 -translate-y-1/2 p-1.5 sm:p-2 rounded-full bg-black/25 hover:bg-black/50 text-zinc-300 hover:text-amber-400 border border-white/10 hover:border-amber-500/40 transition-all opacity-100 md:opacity-0 md:group-hover:opacity-100 active:scale-90 flex items-center justify-center cursor-pointer shadow-lg backdrop-blur-md z-20"
                             title="Next Slide"
                           >
-                            <ChevronRight className="w-4 h-4 md:w-5 md:h-5" />
+                            <ChevronRight className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                           </button>
                         </>
                       )}
 
-                      {/* Slide Indicator Dots */}
+                      {/* Slide Indicator Dots (compact 5 dots) */}
                       {carouselMovies.length > 1 && (
-                        <div className="absolute bottom-4 right-6 md:bottom-8 md:right-12 flex items-center gap-2 z-10 bg-black/40 px-3 py-1.5 rounded-full border border-white/5 backdrop-blur-sm">
-                          {carouselMovies.map((m, idx) => (
+                        <div className="absolute bottom-3 right-4 sm:bottom-6 sm:right-8 flex items-center gap-1.5 z-10 bg-black/30 px-2 sm:px-2.5 py-1 rounded-full border border-white/5 backdrop-blur-sm">
+                          {carouselMovies.slice(0, 5).map((m, idx) => (
                             <button
                               key={m.id}
                               onClick={() => setCarouselIndex(idx)}
-                              className={`h-1.5 rounded-full transition-all duration-300 cursor-pointer ${
+                              className={`h-1 sm:h-1.5 rounded-full transition-all duration-300 cursor-pointer ${
                                 idx === activeCarouselIndex 
-                                  ? 'w-6 bg-amber-500' 
-                                  : 'w-1.5 bg-zinc-600 hover:bg-zinc-400'
+                                  ? 'w-4 sm:w-5 bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.5)]' 
+                                  : 'w-1 sm:w-1.5 bg-zinc-600/80 hover:bg-zinc-400'
                               }`}
                               title={`Go to slide ${idx + 1}`}
                             />
