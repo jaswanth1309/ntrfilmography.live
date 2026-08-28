@@ -524,6 +524,7 @@ export default function App() {
 
   // Cinematic Movies Page Selection State
   const [selectedMovie, setSelectedMovie] = useState<any | null>(null);
+  const [isInvalidMovieSlug, setIsInvalidMovieSlug] = useState(false);
   const [activeMovieTab, setActiveMovieTab] = useState<'info' | 'cast' | 'songs' | 'trivia'>('info');
   const [movieVideoUrl, setMovieVideoUrl] = useState<string | null>(null);
 
@@ -1472,38 +1473,58 @@ export default function App() {
     if (typeof window === 'undefined') return;
 
     const resolveCurrentRoute = (isPopState = false) => {
-      // 1. Path-based route: /movies/<clean-slug> or /movie/<clean-slug>
       const pathname = window.location.pathname;
+      const cleanPath = pathname.replace(/\/$/, '').toLowerCase();
+      const params = new URLSearchParams(window.location.search);
+
+      // 1. Path-based movie detail route: /movies/<slug> or /movie/<slug>
       const pathMatch = pathname.match(/^\/movies?\/(.+)/i);
       const pathSlug = pathMatch && pathMatch[1] ? decodeURIComponent(pathMatch[1].replace(/\/$/, '')).trim() : null;
 
       // 2. Query-based legacy route: ?movie=<id_or_slug>
-      const params = new URLSearchParams(window.location.search);
       const movieParam = params.get('movie') ? decodeURIComponent(params.get('movie')!).trim() : null;
 
       const targetMovieSlug = pathSlug || movieParam || (!initialRouteRef.current.isResolved ? initialRouteRef.current.movieSlug : null);
 
       if (targetMovieSlug) {
         if (allMovies.length > 0) {
-          const cleanTarget = targetMovieSlug.toLowerCase();
-          const found = allMovies.find(m => 
-            (m.cleanSlug && m.cleanSlug.toLowerCase() === cleanTarget) ||
-            (m.slug && m.slug.toLowerCase() === cleanTarget) ||
-            (m.legacySlug && m.legacySlug.toLowerCase() === cleanTarget) ||
-            (m.id && m.id.toLowerCase() === cleanTarget) ||
-            (m.title && m.title.toLowerCase() === cleanTarget) ||
-            (generateCleanMovieSlug(m.id).toLowerCase() === cleanTarget) ||
-            (generateCleanMovieSlug(m.title).toLowerCase() === cleanTarget)
-          );
+          const cleanTarget = targetMovieSlug.toLowerCase().replace(/[-_]/g, ' ');
+          const rawTarget = targetMovieSlug.toLowerCase();
+          const found = allMovies.find(m => {
+            const mCleanSlug = (m.cleanSlug || '').toLowerCase();
+            const mSlug = (m.slug || '').toLowerCase();
+            const mLegacySlug = (m.legacySlug || '').toLowerCase();
+            const mId = (m.id || '').toLowerCase();
+            const mTitle = (m.title || '').toLowerCase();
+            const genSlugId = generateCleanMovieSlug(m.id || '').toLowerCase();
+            const genSlugTitle = generateCleanMovieSlug(m.title || '').toLowerCase();
+
+            return (
+              mCleanSlug === rawTarget ||
+              mSlug === rawTarget ||
+              mLegacySlug === rawTarget ||
+              mId === rawTarget ||
+              mTitle === cleanTarget ||
+              genSlugId === rawTarget ||
+              genSlugTitle === rawTarget ||
+              matchesMovie(m.title || '', targetMovieSlug) ||
+              matchesMovie(m.id || '', targetMovieSlug)
+            );
+          });
 
           initialRouteRef.current.isResolved = true;
 
           if (found) {
             setCurrentView('movies');
             setSelectedMovie(found);
+            setIsInvalidMovieSlug(false);
             return;
           } else {
+            // Target movie slug requested but not found in archive -> trigger 404 state
+            setCurrentView('movies');
             setSelectedMovie(null);
+            setIsInvalidMovieSlug(true);
+            return;
           }
         } else {
           // Waiting for allMovies to populate asynchronously
@@ -1511,11 +1532,37 @@ export default function App() {
         }
       } else {
         initialRouteRef.current.isResolved = true;
+        setIsInvalidMovieSlug(false);
         if (isPopState) {
           setSelectedMovie(null);
         }
       }
 
+      // 3. Path-based section routes: /movies, /photos, /cuts, /offline, /favorites
+      if (cleanPath === '/movies' || cleanPath === '/movie') {
+        setCurrentView('movies');
+        setSelectedMovie(null);
+        setIsInvalidMovieSlug(false);
+        return;
+      } else if (cleanPath === '/photos' || cleanPath === '/photo') {
+        setCurrentView('photos');
+        setSelectedMovie(null);
+        return;
+      } else if (cleanPath === '/cuts' || cleanPath === '/cut') {
+        setCurrentView('cuts');
+        setSelectedMovie(null);
+        return;
+      } else if (cleanPath === '/offline') {
+        setCurrentView('offline');
+        setSelectedMovie(null);
+        return;
+      } else if (cleanPath === '/favorites') {
+        setCurrentView('favorites');
+        setSelectedMovie(null);
+        return;
+      }
+
+      // 4. Query-based legacy section routes: ?tab=movies, ?tab=photos, etc.
       const tabParam = params.get('tab');
       if (tabParam && ['home', 'movies', 'photos', 'cuts', 'offline', 'favorites'].includes(tabParam.toLowerCase())) {
         setCurrentView(tabParam.toLowerCase() as any);
@@ -1534,40 +1581,47 @@ export default function App() {
     return () => window.removeEventListener('popstate', handlePopState);
   }, [allMovies]);
 
-  // Dynamic SEO Title, Meta Description & JSON-LD Synchronization
+  // Dynamic SEO Title, Meta Description, Open Graph, Twitter & JSON-LD Synchronization
   useEffect(() => {
     if (typeof document === 'undefined') return;
 
-    // 1. Dynamic Page Titles & Descriptions
-    let pageTitle = "NTR Filmography – Complete Movies, Career & Cinematic Archive";
-    let pageDesc = "Explore the complete NTR Filmography: a comprehensive cinematic archive featuring movies, release details, songs, HD photos, video cuts, and career highlights.";
+    // 1. Dynamic Page Titles, Descriptions, Canonical URLs, and Robots Directives
+    let pageTitle = "NTR Filmography – Jr NTR Movies List, Songs & Cinematic Archive";
+    let pageDesc = "Explore the complete Jr NTR filmography: a comprehensive cinematic archive of N. T. Rama Rao Jr. movies, soundtracks, HD photo gallery, video cuts, and career highlights.";
     let pageUrl = "https://ntrfilmography.live/";
+    let pageImage = "https://pub-4b8805119f7f49ae848fa1aaa57dd6d0.r2.dev/BG%20Images/Man%20of%20Masses%20NTR%20L.png";
+    let is404 = isInvalidMovieSlug;
 
-    if (selectedMovie) {
+    if (isInvalidMovieSlug) {
+      pageTitle = "Movie Not Found – NTR Filmography";
+      pageDesc = "The requested movie could not be found in the NTR Filmography archive. Explore the complete catalog of 31 Jr NTR films.";
+      pageUrl = "https://ntrfilmography.live/movies";
+    } else if (selectedMovie) {
       const cleanSlug = selectedMovie.cleanSlug || generateCleanMovieSlug(selectedMovie.slug || selectedMovie.title);
-      pageTitle = `${selectedMovie.title} (${selectedMovie.releaseYear || ''}) – NTR Filmography | Movie Details, Songs & Stills`;
-      pageDesc = `Explore ${selectedMovie.title} starring NTR in the NTR Filmography archive. Runtime: ${selectedMovie.runTime || '150'} mins. Rating: ${selectedMovie.rating || '8.5'}/10. Features full soundtrack, audio player, high-res stills, and release information.`;
+      pageTitle = `${selectedMovie.title} (${selectedMovie.releaseYear || ''}) – Jr NTR Movie Details, Songs & Stills | NTR Filmography`;
+      pageDesc = `Explore ${selectedMovie.title} starring Jr NTR in the NTR Filmography archive. ${selectedMovie.runTime ? `Runtime: ${selectedMovie.runTime} mins. ` : ''}${selectedMovie.rating ? `Rating: ${selectedMovie.rating}/10. ` : ''}Features full soundtrack, audio player, high-res stills, and release information.`;
       pageUrl = `https://ntrfilmography.live/movies/${encodeURIComponent(cleanSlug)}`;
+      pageImage = selectedMovie.bannerUrl || selectedMovie.posterUrl || pageImage;
     } else if (currentView === 'movies') {
-      pageTitle = "Explore NTR Movies – Complete Catalog & Filmography | NTR Filmography";
-      pageDesc = "Browse the comprehensive catalog of NTR movies with release dates, box office records, runtimes, audio tracks, and streaming media.";
-      pageUrl = "https://ntrfilmography.live/?tab=movies";
+      pageTitle = "All Jr NTR Movies – Complete Filmography & Cinematic Career | NTR Filmography";
+      pageDesc = "Browse the comprehensive catalog of 31 Jr NTR movies with release dates, box office records, runtimes, audio tracks, and streaming media.";
+      pageUrl = "https://ntrfilmography.live/movies";
     } else if (currentView === 'photos') {
       pageTitle = "NTR Photo Archive – HD Stills, Events & Gallery | NTR Filmography";
       pageDesc = "High-definition photography archive of NTR featuring movie stills, public events, off-screen moments, and celebration photos.";
-      pageUrl = "https://ntrfilmography.live/?tab=photos";
+      pageUrl = "https://ntrfilmography.live/photos";
     } else if (currentView === 'cuts') {
       pageTitle = "NTR Video Cuts & Songs – Action & Mass Moments | NTR Filmography";
       pageDesc = "Curated video cuts and chart-topping video songs showcasing iconic mass action scenes, dialogues, and dance sequences of NTR.";
-      pageUrl = "https://ntrfilmography.live/?tab=cuts";
+      pageUrl = "https://ntrfilmography.live/cuts";
     } else if (currentView === 'offline') {
       pageTitle = "NTR Videos & Media Archive – Trailers & Events | NTR Filmography";
       pageDesc = "Comprehensive video library of NTR press events, theatrical trailers, behind-the-scenes footage, and fan celebration archives.";
-      pageUrl = "https://ntrfilmography.live/?tab=offline";
+      pageUrl = "https://ntrfilmography.live/offline";
     } else if (currentView === 'favorites') {
       pageTitle = "My Favorites – NTR Filmography";
       pageDesc = "Your personalized collection of bookmarked NTR movies, soundtracks, photos, and video clips.";
-      pageUrl = "https://ntrfilmography.live/?tab=favorites";
+      pageUrl = "https://ntrfilmography.live/favorites";
     }
 
     document.title = pageTitle;
@@ -1578,6 +1632,19 @@ export default function App() {
       metaDesc.setAttribute('content', pageDesc);
     }
 
+    // Update Robots Directive (noindex on 404, index on standard pages)
+    let robotsMeta = document.querySelector('meta[name="robots"]');
+    if (!robotsMeta) {
+      robotsMeta = document.createElement('meta');
+      robotsMeta.setAttribute('name', 'robots');
+      document.head.appendChild(robotsMeta);
+    }
+    if (is404) {
+      robotsMeta.setAttribute('content', 'noindex, nofollow');
+    } else {
+      robotsMeta.setAttribute('content', 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1');
+    }
+
     // Update Open Graph tags
     const ogTitle = document.querySelector('meta[property="og:title"]');
     if (ogTitle) ogTitle.setAttribute('content', pageTitle);
@@ -1585,6 +1652,10 @@ export default function App() {
     if (ogDesc) ogDesc.setAttribute('content', pageDesc);
     const ogUrl = document.querySelector('meta[property="og:url"]');
     if (ogUrl) ogUrl.setAttribute('content', pageUrl);
+    const ogImage = document.querySelector('meta[property="og:image"]');
+    if (ogImage) ogImage.setAttribute('content', pageImage);
+    const ogType = document.querySelector('meta[property="og:type"]');
+    if (ogType) ogType.setAttribute('content', selectedMovie ? 'video.movie' : 'website');
 
     // Update Twitter tags
     const twTitle = document.querySelector('meta[name="twitter:title"]');
@@ -1593,16 +1664,17 @@ export default function App() {
     if (twDesc) twDesc.setAttribute('content', pageDesc);
     const twUrl = document.querySelector('meta[name="twitter:url"]');
     if (twUrl) twUrl.setAttribute('content', pageUrl);
+    const twImage = document.querySelector('meta[name="twitter:image"]');
+    if (twImage) twImage.setAttribute('content', pageImage);
 
-    // Update Canonical URL
+    // Update Canonical URL Link
     const canonicalLink = document.querySelector('link[rel="canonical"]');
     if (canonicalLink) {
       canonicalLink.setAttribute('href', pageUrl);
     }
 
-    // Sync History State without full reload
+    // Sync History State cleanly without full page reloads
     if (typeof window !== 'undefined' && window.history && window.history.replaceState) {
-      // Prevent premature URL rewriting while waiting for initial movie route resolution
       if (!initialRouteRef.current.isResolved && allMovies.length === 0) {
         return;
       }
@@ -1613,9 +1685,15 @@ export default function App() {
         if (window.location.pathname !== targetPath || window.location.search) {
           window.history.replaceState(null, '', targetPath);
         }
-      } else {
-        const targetUrl = currentView === 'home' ? '/' : `/?tab=${currentView}`;
-        if (window.location.pathname.startsWith('/movie') || (currentView === 'home' ? (window.location.pathname !== '/' || window.location.search) : window.location.search !== `?tab=${currentView}`)) {
+      } else if (!isInvalidMovieSlug) {
+        let targetUrl = '/';
+        if (currentView === 'movies') targetUrl = '/movies';
+        else if (currentView === 'photos') targetUrl = '/photos';
+        else if (currentView === 'cuts') targetUrl = '/cuts';
+        else if (currentView === 'offline') targetUrl = '/offline';
+        else if (currentView === 'favorites') targetUrl = '/favorites';
+
+        if (window.location.pathname.startsWith('/movie') || window.location.pathname !== targetUrl) {
           if (initialRouteRef.current.isResolved) {
             window.history.replaceState(null, '', targetUrl);
           }
@@ -1623,14 +1701,16 @@ export default function App() {
       }
     }
 
-    // 2. Dynamic JSON-LD Structured Data Schema for Movies
-    let dynamicScript = document.getElementById('dynamic-movie-jsonld');
+    // 2. Dynamic JSON-LD Structured Data Schema for Movies & Breadcrumbs
+    let movieScript = document.getElementById('dynamic-movie-jsonld');
+    let breadcrumbScript = document.getElementById('dynamic-breadcrumb-jsonld');
+
     if (selectedMovie) {
-      if (!dynamicScript) {
-        dynamicScript = document.createElement('script');
-        dynamicScript.id = 'dynamic-movie-jsonld';
-        dynamicScript.setAttribute('type', 'application/ld+json');
-        document.head.appendChild(dynamicScript);
+      if (!movieScript) {
+        movieScript = document.createElement('script');
+        movieScript.id = 'dynamic-movie-jsonld';
+        movieScript.setAttribute('type', 'application/ld+json');
+        document.head.appendChild(movieScript);
       }
 
       const hasGenuineStory = selectedMovie.story &&
@@ -1646,6 +1726,9 @@ export default function App() {
         ...((selectedMovie as any).ratingCount ? { "ratingCount": (selectedMovie as any).ratingCount.toString() } : {})
       } : undefined;
 
+      const directorName = selectedMovie.crew?.find((c: any) => c.job === 'Director' || c.department === 'Directing')?.personName;
+      const musicDirectorName = selectedMovie.crew?.find((c: any) => c.job === 'Composer' || c.department === 'Music')?.personName;
+
       const movieSchema: any = {
         "@context": "https://schema.org",
         "@type": "Movie",
@@ -1656,22 +1739,71 @@ export default function App() {
         ...(selectedMovie.runTime ? { "duration": `PT${selectedMovie.runTime}M` } : {}),
         ...(selectedMovie.bannerUrl || selectedMovie.posterUrl ? { "image": selectedMovie.bannerUrl || selectedMovie.posterUrl } : {}),
         ...(hasGenuineStory ? { "description": selectedMovie.story } : {}),
+        ...(directorName ? { "director": { "@type": "Person", "name": directorName } } : {}),
+        ...(musicDirectorName ? { "musicBy": { "@type": "Person", "name": musicDirectorName } } : {}),
+        ...(selectedMovie.eraCategory && selectedMovie.eraCategory !== 'R2 Synced' ? { "genre": selectedMovie.eraCategory } : {}),
         "actor": [
           {
             "@type": "Person",
             "name": "N. T. Rama Rao Jr.",
-            "alternateName": ["Jr NTR", "Tarak", "NTR"]
-          }
+            "alternateName": ["Jr NTR", "Tarak", "NTR"],
+            "sameAs": [
+              "https://x.com/tarak9999",
+              "https://www.instagram.com/jrntr",
+              "https://en.wikipedia.org/wiki/N._T._Rama_Rao_Jr."
+            ]
+          },
+          ...(Array.isArray(selectedMovie.cast) ? selectedMovie.cast.filter((c: any) => c.personName && c.personName !== 'N. T. Rama Rao Jr.').map((c: any) => ({
+            "@type": "Person",
+            "name": c.personName,
+            ...(c.characterName ? { "characterName": c.characterName } : {})
+          })) : [])
         ],
         ...(movieRating ? { "aggregateRating": movieRating } : {})
       };
-      dynamicScript.textContent = JSON.stringify(movieSchema);
+      movieScript.textContent = JSON.stringify(movieSchema);
+
+      // Movie Breadcrumbs
+      if (!breadcrumbScript) {
+        breadcrumbScript = document.createElement('script');
+        breadcrumbScript.id = 'dynamic-breadcrumb-jsonld';
+        breadcrumbScript.setAttribute('type', 'application/ld+json');
+        document.head.appendChild(breadcrumbScript);
+      }
+      const breadcrumbSchema = {
+        "@context": "https://schema.org",
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          {
+            "@type": "ListItem",
+            "position": 1,
+            "name": "Home",
+            "item": "https://ntrfilmography.live/"
+          },
+          {
+            "@type": "ListItem",
+            "position": 2,
+            "name": "Movies",
+            "item": "https://ntrfilmography.live/movies"
+          },
+          {
+            "@type": "ListItem",
+            "position": 3,
+            "name": selectedMovie.title,
+            "item": pageUrl
+          }
+        ]
+      };
+      breadcrumbScript.textContent = JSON.stringify(breadcrumbSchema);
     } else {
-      if (dynamicScript && dynamicScript.parentNode) {
-        dynamicScript.parentNode.removeChild(dynamicScript);
+      if (movieScript && movieScript.parentNode) {
+        movieScript.parentNode.removeChild(movieScript);
+      }
+      if (breadcrumbScript && breadcrumbScript.parentNode) {
+        breadcrumbScript.parentNode.removeChild(breadcrumbScript);
       }
     }
-  }, [currentView, selectedMovie]);
+  }, [currentView, selectedMovie, isInvalidMovieSlug]);
 
   // =========================================================================
   // [TAG: SECTION_4_S3_SYNC_SERVICES] - CLOUDFLARE R2 DATA INTEGRATIONS AND SYNCHRONIZERS
@@ -4569,17 +4701,104 @@ export default function App() {
             {/* VIEW - STAGE: MOVIES */}
             <div className={currentView === 'movies' ? "block w-full" : "hidden"}>
               {(() => {
+                if (isInvalidMovieSlug) {
+                  return (
+                    <div className="flex flex-col items-center justify-center py-20 px-4 text-center max-w-lg mx-auto animate-fade-in" id="movie-not-found-view">
+                      <div className="w-16 h-16 rounded-2xl bg-zinc-900 border border-zinc-800 flex items-center justify-center text-amber-500 mb-6 shadow-xl">
+                        <Film className="w-8 h-8" />
+                      </div>
+                      <h1 className="text-2xl sm:text-3xl font-black text-white uppercase tracking-tight mb-2">
+                        Movie Not Found
+                      </h1>
+                      <p className="text-zinc-400 text-sm leading-relaxed mb-6">
+                        The requested movie could not be found in the NTR Filmography archive. Explore the complete catalog of 31 Jr NTR films.
+                      </p>
+                      <a
+                        href="/movies"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          setIsInvalidMovieSlug(false);
+                          setSelectedMovie(null);
+                          window.history.pushState(null, '', '/movies');
+                        }}
+                        className="px-6 py-3 bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold rounded-2xl text-xs uppercase tracking-wider transition-all active:scale-95 shadow-lg shadow-amber-500/20 cursor-pointer no-underline"
+                      >
+                        Browse All Movies
+                      </a>
+                    </div>
+                  );
+                }
+
                 const movies = getFilteredMovies();
               
               if (selectedMovie) {
                 // RENDER IMMERSIVE CINEMATIC MOVIE DETAIL PAGE
                 return (
-                  <div className="flex flex-col gap-8 pb-10 w-full" id="movie-detail-view">
+                  <div className="flex flex-col gap-6 pb-10 w-full" id="movie-detail-view">
+                    {/* Semantic Breadcrumb Navigation */}
+                    <nav aria-label="Breadcrumb" className="flex items-center gap-2 text-xs text-zinc-400">
+                      <a 
+                        href="/" 
+                        onClick={(e) => {
+                          if (!e.ctrlKey && !e.metaKey && !e.shiftKey && e.button === 0) {
+                            e.preventDefault();
+                            setSelectedMovie(null);
+                            setCurrentView('home');
+                            window.history.pushState(null, '', '/');
+                          }
+                        }}
+                        className="hover:text-amber-400 transition-colors no-underline text-zinc-400"
+                      >
+                        Home
+                      </a>
+                      <span className="text-zinc-600">/</span>
+                      <a 
+                        href="/movies" 
+                        onClick={(e) => {
+                          if (!e.ctrlKey && !e.metaKey && !e.shiftKey && e.button === 0) {
+                            e.preventDefault();
+                            setSelectedMovie(null);
+                            setCurrentView('movies');
+                            window.history.pushState(null, '', '/movies');
+                          }
+                        }}
+                        className="hover:text-amber-400 transition-colors no-underline text-zinc-400"
+                      >
+                        Movies
+                      </a>
+                      <span className="text-zinc-600">/</span>
+                      <span className="text-amber-500 font-bold truncate max-w-[200px] sm:max-w-none">
+                        {selectedMovie.title}
+                      </span>
+                    </nav>
+
+                    {/* Mobile Title Display */}
+                    <div className="sm:hidden flex flex-col gap-1">
+                      <h1 className="text-2xl font-black text-white uppercase tracking-tight leading-tight">
+                        {selectedMovie.title}
+                      </h1>
+                      <div className="flex items-center gap-2 text-xs text-zinc-400">
+                        {selectedMovie.releaseYear && <span>{selectedMovie.releaseYear}</span>}
+                        {selectedMovie.runTime && (
+                          <>
+                            <span className="text-zinc-600">•</span>
+                            <span>{selectedMovie.runTime} mins</span>
+                          </>
+                        )}
+                        {selectedMovie.language && (
+                          <>
+                            <span className="text-zinc-600">•</span>
+                            <span className="uppercase text-[10px] bg-zinc-900 border border-zinc-800 px-1.5 py-0.5 rounded text-zinc-300">{selectedMovie.language}</span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+
                     {/* Cinematic Wide Banner Cover */}
                     <div className="relative hidden sm:block h-64 md:h-[400px] rounded-3xl overflow-hidden border border-zinc-900 shadow-2xl">
                       <img 
                         src={getOptimizedImageUrl(selectedMovie.bannerUrl, 'medium')} 
-                        alt={selectedMovie.title}
+                        alt={`Jr NTR in ${selectedMovie.title} cinematic banner`}
                         className="w-full h-full object-cover"
                         referrerPolicy="no-referrer"
                       />
@@ -4628,7 +4847,7 @@ export default function App() {
                         <div className="bg-zinc-900/40 backdrop-blur-md p-4 rounded-3xl border border-zinc-800/50 shadow-[0_12px_40px_rgba(0,0,0,0.6),inset_0_1px_1px_rgba(255,255,255,0.05)]">
                           <img 
                             src={getOptimizedImageUrl(selectedMovie.posterUrl, 'medium')} 
-                            alt={selectedMovie.title} 
+                            alt={`Jr NTR in ${selectedMovie.title} movie poster`} 
                             className="w-full aspect-[2/3] object-cover rounded-2xl border border-zinc-800/80 shadow-md"
                             referrerPolicy="no-referrer"
                           />
@@ -4854,7 +5073,7 @@ export default function App() {
                           {/* Active Slide Image */}
                           <img 
                             src={getOptimizedImageUrl(featuredMovie.bannerUrl, isMobile ? 'medium' : 'original')} 
-                            alt={featuredMovie.title}
+                            alt={`Jr NTR in ${featuredMovie.title} featured banner`}
                             className="w-full h-full object-cover transition-transform duration-700 ease-in-out transform hover:scale-[1.01]"
                             referrerPolicy="no-referrer"
                           />
@@ -5023,7 +5242,7 @@ export default function App() {
                               }`}>
                                 <img
                                   src={getOptimizedImageUrl(movie.posterUrl, 'low')}
-                                  alt={movie.title}
+                                  alt={`Jr NTR in ${movie.title} movie poster`}
                                   className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                                   referrerPolicy="no-referrer"
                                   loading="lazy"

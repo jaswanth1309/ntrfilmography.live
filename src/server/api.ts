@@ -1193,18 +1193,27 @@ const handleMediaSync = async (c: any) => {
   }
 };
 
-// Generator for Google crawler-compliant sitemap XML based exclusively on live R2 data
+// Generator for Google crawler-compliant sitemap XML based on canonical URLs and live R2 data
 export async function generateSitemapXml(c: any): Promise<Response> {
   const domain = "https://ntrfilmography.live";
   const today = new Date().toISOString().split("T")[0];
 
-  // 1. Static supported sections
+  // 1. Static supported canonical sections (no query params, no user-specific utilities)
   const coreUrls = [
     { loc: `${domain}/`, lastmod: today, changefreq: "daily", priority: "1.0" },
-    { loc: `${domain}/?tab=movies`, lastmod: today, changefreq: "daily", priority: "0.9" },
-    { loc: `${domain}/?tab=photos`, lastmod: today, changefreq: "weekly", priority: "0.8" },
-    { loc: `${domain}/?tab=cuts`, lastmod: today, changefreq: "weekly", priority: "0.8" },
-    { loc: `${domain}/?tab=offline`, lastmod: today, changefreq: "weekly", priority: "0.7" },
+    { loc: `${domain}/movies`, lastmod: today, changefreq: "daily", priority: "0.9" },
+    { loc: `${domain}/photos`, lastmod: today, changefreq: "weekly", priority: "0.8" },
+    { loc: `${domain}/cuts`, lastmod: today, changefreq: "weekly", priority: "0.8" },
+  ];
+
+  const defaultMovieSlugs = [
+    "ninnu-choodalani-2001", "student-no-1-2001", "subbu-2001", "aadi-2002", "allari-ramudu-2002",
+    "naaga-2003", "simhadri-2003", "andhrawala-2004", "samba-2004", "naa-alludu-2005",
+    "narasimhudu-2005", "ashok-2006", "rakhi-2006", "yamadonga-2007", "kantri-2008",
+    "chintakayala-ravi-2008", "adhurs-2010", "brindavanam-2010", "shakti-2011", "oosaravelli-2011",
+    "dammu-2012", "baadshah-2013", "ramayya-vasthavayya-2013", "rabhasa-2014", "temper-2015",
+    "nannaku-prematho-2016", "janatha-garage-2016", "jai-lava-kusa-2017", "aravinda-sametha-veera-raghava-2018",
+    "rrr-2022", "devara-part-1-2024"
   ];
 
   const movieUrls: { loc: string; lastmod: string; changefreq: string; priority: string }[] = [];
@@ -1242,7 +1251,6 @@ export async function generateSitemapXml(c: any): Promise<Response> {
     const seenSlugs = new Set<string>();
 
     for (const movieFile of bucketFiles) {
-      // Determine movie slug using clean slug generation logic
       const generatedSlug = generateCleanMovieSlug(movieFile.key);
       
       if (generatedSlug && !seenSlugs.has(generatedSlug)) {
@@ -1256,8 +1264,30 @@ export async function generateSitemapXml(c: any): Promise<Response> {
         });
       }
     }
+
+    // If bucket files were empty, populate with standard canonical list
+    if (movieUrls.length === 0) {
+      for (const slug of defaultMovieSlugs) {
+        movieUrls.push({
+          loc: `${domain}/movies/${slug}`,
+          lastmod: today,
+          changefreq: "weekly",
+          priority: "0.8",
+        });
+      }
+    }
   } catch (err: any) {
     console.warn("[SITEMAP] Failed to fetch live R2 movies for dynamic sitemap:", err.message);
+    if (movieUrls.length === 0) {
+      for (const slug of defaultMovieSlugs) {
+        movieUrls.push({
+          loc: `${domain}/movies/${slug}`,
+          lastmod: today,
+          changefreq: "weekly",
+          priority: "0.8",
+        });
+      }
+    }
   }
 
   const allEntries = [...coreUrls, ...movieUrls];
