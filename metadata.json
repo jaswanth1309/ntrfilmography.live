@@ -1,0 +1,8 @@
+{
+  "name": "NTR Filmography",
+  "description": "The complete NTR Filmography, movies, career details, and cinematic archive.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

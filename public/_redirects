@@ -1,0 +1,3 @@
+# Cloudflare Pages SPA deep-linking for clean movie detail routes
+/movies/* /index.html 200
+/movies /index.html 200
