@@ -930,6 +930,23 @@ export default function App() {
   const [selectedVideosFolderNode, setSelectedVideosFolderNode] = useState<FolderNode | null>(null);
 
   const [activeMediaList, setActiveMediaList] = useState<any[]>([]);
+  const activeMediaListRef = useRef<any[]>(activeMediaList);
+  useEffect(() => {
+    activeMediaListRef.current = activeMediaList;
+  }, [activeMediaList]);
+
+  // Robust comparison between two media items across all schema variations
+  const areMediaItemsMatch = useCallback((a: any, b: any) => {
+    if (!a || !b) return false;
+    if (a === b) return true;
+    if (a.id && b.id && a.id === b.id) return true;
+    if (a.key && b.key && a.key === b.key) return true;
+    if (a.videoUrl && b.videoUrl && a.videoUrl === b.videoUrl) return true;
+    if (a.imageUrl && b.imageUrl && a.imageUrl === b.imageUrl) return true;
+    if (a.movieId && b.movieId && a.movieId === b.movieId && a.title === b.title) return true;
+    if (a.title && b.title && a.title === b.title) return true;
+    return false;
+  }, []);
 
   // Maintain a ref to parsedBucketData to prevent stale closures in popstate handler
   const parsedBucketDataRef = useRef(parsedBucketData);
@@ -2650,6 +2667,30 @@ export default function App() {
       return true;
     });
   };
+
+  // Atomic state updater for Next/Previous media navigation without race conditions
+  const handleMediaViewerNavigate = useCallback((direction: 'next' | 'prev') => {
+    setActiveMediaItem((prevItem: any) => {
+      if (!prevItem) return null;
+      const isPhoto = 'imageUrl' in prevItem && !('type' in prevItem);
+      const list = (activeMediaListRef.current && activeMediaListRef.current.length > 0)
+        ? activeMediaListRef.current
+        : (isPhoto ? getActiveGalleryPhotos() : []);
+
+      if (!list || list.length <= 1) return prevItem;
+
+      const currentIndex = list.findIndex(p => areMediaItemsMatch(p, prevItem));
+      if (currentIndex === -1) {
+        return direction === 'next' ? list[0] : list[list.length - 1];
+      }
+
+      const targetIndex = direction === 'next'
+        ? (currentIndex + 1) % list.length
+        : (currentIndex - 1 + list.length) % list.length;
+
+      return list[targetIndex];
+    });
+  }, [areMediaItemsMatch]);
 
   // Extract folder name from a photo (from R2 key or local metadata)
   const getPhotoFolder = (photo: Photo): string => {
@@ -6502,32 +6543,22 @@ export default function App() {
           </div>
         }>
           {(() => {
-            let onNext: (() => void) | undefined;
-            let onPrev: (() => void) | undefined;
-
             const isPhoto = 'imageUrl' in activeMediaItem && !('type' in activeMediaItem);
             const currentList = activeMediaList && activeMediaList.length > 0 
               ? activeMediaList 
               : (isPhoto ? getActiveGalleryPhotos() : []);
 
-            const currentIndex = currentList.findIndex(p => p.id === activeMediaItem.id);
-            if (currentIndex !== -1 && currentList.length > 1) {
-              onPrev = () => {
-                const prevIndex = (currentIndex - 1 + currentList.length) % currentList.length;
-                setActiveMediaItem(currentList[prevIndex]);
-              };
-              onNext = () => {
-                const nextIndex = (currentIndex + 1) % currentList.length;
-                setActiveMediaItem(currentList[nextIndex]);
-              };
-            }
+            const hasMultiple = currentList && currentList.length > 1;
+            const onPrev = hasMultiple ? () => handleMediaViewerNavigate('prev') : undefined;
+            const onNext = hasMultiple ? () => handleMediaViewerNavigate('next') : undefined;
+            const activeItemId = activeMediaItem.id || activeMediaItem.key || activeMediaItem.movieId || activeMediaItem.title || '';
 
             return (
               <MediaViewer 
                 item={activeMediaItem}
                 onClose={() => setActiveMediaItem(null)}
-                isFavorited={isItemFavorited(activeMediaItem.id)}
-                onToggleFavorite={() => toggleFavorite(activeMediaItem.id)}
+                isFavorited={isItemFavorited(activeItemId)}
+                onToggleFavorite={() => toggleFavorite(activeItemId)}
                 relatedItems={currentList}
                 onNext={onNext}
                 onPrev={onPrev}

@@ -180,13 +180,18 @@ export default function MediaViewer({
 
   // High preference loading for the clicked (active) item first
   useEffect(() => {
-    const originalUrl = isVideo 
-      ? (item as any).videoUrl 
-      : (isPhoto ? (item as any).imageUrl : ((item as any).imageUrl || (item as any).posterUrl));
+    if (isVideo) {
+      // Videos stream natively using HTTP range requests with zero delay
+      setResolvedUrl(rawUrl);
+      setLoadingMedia(false);
+      setLoadProgress(100);
+      setIsFromCache(false);
+      triggerNeighbourPreload();
+      return;
+    }
 
-    const targetUrl = isVideo 
-      ? originalUrl 
-      : getOptimizedImageUrl(originalUrl, 'medium');
+    const originalUrl = isPhoto ? (item as any).imageUrl : ((item as any).imageUrl || (item as any).posterUrl);
+    const targetUrl = getOptimizedImageUrl(originalUrl, 'medium');
 
     if (!isCacheableUrl(targetUrl)) {
       setResolvedUrl(targetUrl || '');
@@ -197,16 +202,8 @@ export default function MediaViewer({
       return;
     }
 
-    // Check if already in the browser cache
-    caches.open('media-viewer-cache-v1')
-      .then(cache => cache.match(targetUrl))
-      .then(match => {
-        setIsFromCache(!!match);
-      })
-      .catch(() => {
-        setIsFromCache(false);
-      });
-
+    // Reset resolved URL for the new item to prevent showing previous item
+    setResolvedUrl('');
     setLoadingMedia(true);
     setLoadProgress(0);
     const controller = new AbortController();
@@ -219,11 +216,9 @@ export default function MediaViewer({
         setLoadingMedia(false);
         setLoadProgress(100);
         setIsFromCache(true);
-        // Give full preference to the active item, only load neighbor items AFTER the active one loads!
         triggerNeighbourPreload();
       })
       .catch((err) => {
-        console.warn('Failed to load media via cache manager:', err);
         setResolvedUrl(targetUrl);
         setLoadingMedia(false);
         setLoadProgress(100);
@@ -232,30 +227,28 @@ export default function MediaViewer({
 
     return () => {
       controller.abort();
-      abortAllPreloads(); // Cancel neighbor preloads from previous context
+      abortAllPreloads();
     };
-  }, [item, isVideo, isPhoto, relatedItems]);
+  }, [itemKey, rawUrl, isVideo, isPhoto]);
 
   // Reset states when the item changes
   useEffect(() => {
     setIsPortrait(checkInitialPortrait());
-  }, [item, isPoster]);
+  }, [itemKey, isPoster]);
 
   // Handle robust autoplay unmuted-to-muted fallback when item is video
   useEffect(() => {
     let isMounted = true;
-    let playPromise: Promise<void> | null = null;
-    let fallbackPromise: Promise<void> | null = null;
+    const videoEl = videoRef.current;
 
-    if (isVideo && videoRef.current) {
-      const videoEl = videoRef.current;
+    if (isVideo && videoEl) {
       videoEl.muted = false; // Try unmuted first
       
-      playPromise = videoEl.play();
+      const playPromise = videoEl.play();
       if (playPromise !== undefined && playPromise !== null) {
         playPromise
           .then(() => {
-            if (!isMounted) {
+            if (!isMounted && videoEl) {
               videoEl.pause();
             }
           })
@@ -265,24 +258,10 @@ export default function MediaViewer({
             if (error.name === 'AbortError') {
               return;
             }
-            console.warn("Autoplay unmuted failed, falling back to muted play:", error);
-            
-            videoEl.muted = true;
-            fallbackPromise = videoEl.play();
-            if (fallbackPromise !== undefined && fallbackPromise !== null) {
-              fallbackPromise
-                .then(() => {
-                  if (!isMounted) {
-                    videoEl.pause();
-                  }
-                })
-                .catch((err) => {
-                  if (!isMounted) return;
-                  if (err.name === 'AbortError') {
-                    return;
-                  }
-                  console.error("Autoplay completely blocked by browser:", err);
-                });
+            // Autoplay unmuted blocked by browser: fallback to muted play
+            if (videoEl) {
+              videoEl.muted = true;
+              videoEl.play().catch(() => {});
             }
           });
       }
@@ -290,8 +269,11 @@ export default function MediaViewer({
 
     return () => {
       isMounted = false;
+      if (videoEl) {
+        videoEl.pause();
+      }
     };
-  }, [item, isVideo, resolvedUrl]);
+  }, [itemKey, rawUrl, isVideo]);
 
   const handleImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
     const img = e.currentTarget;
@@ -308,8 +290,10 @@ export default function MediaViewer({
       if (e.key === 'Escape') {
         onClose();
       } else if (e.key === 'ArrowRight' && onNext) {
+        e.preventDefault();
         onNext();
       } else if (e.key === 'ArrowLeft' && onPrev) {
+        e.preventDefault();
         onPrev();
       }
     };
@@ -402,14 +386,15 @@ export default function MediaViewer({
         {onPrev && (
           <button
             onClick={(e) => {
+              e.preventDefault();
               e.stopPropagation();
               onPrev();
             }}
-            className="fixed left-4 md:left-8 top-1/2 -translate-y-1/2 z-50 w-10 h-10 md:w-14 md:h-14 rounded-full flex items-center justify-center bg-transparent border-transparent text-zinc-400 hover:text-amber-400 hover:scale-110 active:scale-90 transition-all duration-300 focus:outline-none cursor-pointer group"
+            className="fixed left-4 md:left-8 top-1/2 -translate-y-1/2 z-50 w-10 h-10 md:w-14 md:h-14 rounded-full flex items-center justify-center bg-transparent border-transparent text-zinc-400 hover:text-amber-400 hover:scale-110 active:scale-90 transition-all duration-150 focus:outline-none cursor-pointer group select-none"
             aria-label="Previous Item"
-            title="Previous"
+            title="Previous (Left Arrow)"
           >
-            <ChevronLeft className="w-6 h-6 md:w-7 h-7 group-hover:-translate-x-1 transition-transform" />
+            <ChevronLeft className="w-6 h-6 md:w-7 h-7 group-hover:-translate-x-1 transition-transform pointer-events-none" />
           </button>
         )}
 
@@ -417,14 +402,15 @@ export default function MediaViewer({
         {onNext && (
           <button
             onClick={(e) => {
+              e.preventDefault();
               e.stopPropagation();
               onNext();
             }}
-            className="fixed right-4 md:right-8 top-1/2 -translate-y-1/2 z-50 w-10 h-10 md:w-14 md:h-14 rounded-full flex items-center justify-center bg-transparent border-transparent text-zinc-400 hover:text-amber-400 hover:scale-110 active:scale-90 transition-all duration-300 focus:outline-none cursor-pointer group"
+            className="fixed right-4 md:right-8 top-1/2 -translate-y-1/2 z-50 w-10 h-10 md:w-14 md:h-14 rounded-full flex items-center justify-center bg-transparent border-transparent text-zinc-400 hover:text-amber-400 hover:scale-110 active:scale-90 transition-all duration-150 focus:outline-none cursor-pointer group select-none"
             aria-label="Next Item"
-            title="Next"
+            title="Next (Right Arrow)"
           >
-            <ChevronRight className="w-6 h-6 md:w-7 h-7 group-hover:translate-x-1 transition-transform" />
+            <ChevronRight className="w-6 h-6 md:w-7 h-7 group-hover:translate-x-1 transition-transform pointer-events-none" />
           </button>
         )}
 
@@ -446,6 +432,7 @@ export default function MediaViewer({
                 </div>
               )}
               <img
+                key={itemKey || rawUrl}
                 src={resolvedUrl || getOptimizedImageUrl(isPhoto ? (item as Photo).imageUrl : ((item as any).imageUrl || (item as any).posterUrl), 'medium') || null}
                 alt={item.title}
                 referrerPolicy="no-referrer"
@@ -458,9 +445,11 @@ export default function MediaViewer({
           {isVideo && (item as Video).videoUrl && (
             (item as Video).videoUrl.startsWith('http') ? (
               <video
+                key={itemKey || rawUrl || (item as Video).videoUrl}
                 ref={videoRef}
-                src={resolvedUrl || (item as Video).videoUrl || null}
+                src={rawUrl || (item as Video).videoUrl || null}
                 controls
+                autoPlay
                 loop
                 playsInline
                 preload="auto"
@@ -469,6 +458,7 @@ export default function MediaViewer({
               />
             ) : (
               <iframe
+                key={itemKey || (item as Video).videoUrl}
                 src={`https://www.youtube.com/embed/${(item as Video).videoUrl}?autoplay=1&mute=0&loop=1&playlist=${(item as Video).videoUrl}&playsinline=1&rel=0&controls=1`}
                 title={item.title}
                 className="w-full aspect-video max-h-full rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.9)] border border-zinc-900/60"

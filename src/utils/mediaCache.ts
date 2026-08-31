@@ -10,6 +10,14 @@ let activePreloadControllers: AbortController[] = [];
 let firstVisibleUrl: string | null = null;
 
 /**
+ * Helper to check if a URL is a video format
+ */
+export function isVideoUrl(url: string | undefined): boolean {
+  if (!url) return false;
+  return /\.(mp4|webm|mkv|mov|m4v|avi)(\?.*)?$/i.test(url) || url.includes('/video/') || url.includes('/cuts/');
+}
+
+/**
  * Normalizes and checks if a URL is cacheable (must be a direct HTTP/S URL, not a YouTube ID or local path)
  */
 export function isCacheableUrl(url: string | undefined): boolean {
@@ -22,7 +30,7 @@ export function isCacheableUrl(url: string | undefined): boolean {
  * Otherwise, returns the original URL.
  */
 export async function getCachedOrOriginalUrl(url: string): Promise<string> {
-  if (!isCacheableUrl(url)) return url;
+  if (!isCacheableUrl(url) || isVideoUrl(url)) return url;
 
   // Check in-memory object URL first
   if (objectUrlMap.has(url)) {
@@ -48,6 +56,7 @@ export async function getCachedOrOriginalUrl(url: string): Promise<string> {
 /**
  * Downloads a media file, stores it in Cache Storage, and returns an Object URL.
  * Supports progress updates and can be aborted.
+ * Videos stream natively and bypass blob fetching.
  */
 export async function loadAndCacheMedia(
   url: string,
@@ -55,6 +64,12 @@ export async function loadAndCacheMedia(
   signal?: AbortSignal
 ): Promise<string> {
   if (!isCacheableUrl(url)) return url;
+
+  // Video streams rely on native HTTP Range requests; do not fetch full video files into memory blobs
+  if (isVideoUrl(url)) {
+    onProgress?.(100);
+    return url;
+  }
 
   // Check in-memory object URL first
   if (objectUrlMap.has(url)) {
@@ -154,14 +169,16 @@ export function abortAllPreloads(): void {
 }
 
 /**
- * Preloads list of neighbor URLs in the background with lower priority.
+ * Preloads list of neighbor image URLs in the background with lower priority.
  * Aborts previously running preloads.
+ * Does not preload full video files.
  */
 export function preloadNeighbours(urls: string[]): void {
   // First, cancel any running preloads
   abortAllPreloads();
 
-  const cacheableUrls = urls.filter(isCacheableUrl);
+  // Only preload images; do not download heavy video files in the background
+  const cacheableUrls = urls.filter(u => isCacheableUrl(u) && !isVideoUrl(u));
   if (cacheableUrls.length === 0) return;
 
   cacheableUrls.forEach(async (url) => {
