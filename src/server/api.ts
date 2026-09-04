@@ -150,6 +150,7 @@ function compressR2Data(data: any): { b: string; f: any } {
     photosMovieThumbnails: compressList(data.photosMovieThumbnails),
     photosEventThumbnails: compressList(data.photosEventThumbnails || []),
     videosEventThumbnails: compressList(data.videosEventThumbnails || []),
+    videoCutsMovieThumbnails: compressList(data.videoCutsMovieThumbnails || []),
     audio: compressList(data.audio || []),
     bucketFiles: compressList(data.bucketFiles || [])
   };

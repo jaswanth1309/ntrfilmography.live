@@ -1901,7 +1901,8 @@ export default function App() {
       );
       const hasMovies = Array.isArray(d.movies) && d.movies.length > 0;
       const hasAudio = Array.isArray(d.audio) && d.audio.length > 0;
-      return !!(hasBucketFiles && hasPhotos && hasVideoCuts && hasOfflineVideos && hasMovies && hasAudio);
+      const hasVideoCutsThumbnails = Array.isArray(d.videoCutsMovieThumbnails) && d.videoCutsMovieThumbnails.length > 0;
+      return !!(hasBucketFiles && hasPhotos && hasVideoCuts && hasOfflineVideos && hasMovies && hasAudio && hasVideoCutsThumbnails);
     };
 
     const doPreloadStage = async (dataForPreload: any) => {
@@ -2790,6 +2791,14 @@ export default function App() {
     const naagaUrl = 'https://pub-4b8805119f7f49ae848fa1aaa57dd6d0.r2.dev/Photos%20Thumbnails/Movie%20Thumbnails/Naaga.png';
     const chintakayalaUrl = 'https://pub-4b8805119f7f49ae848fa1aaa57dd6d0.r2.dev/Photos%20Thumbnails/Movie%20Thumbnails/Chintakayala%20Ravi.jpeg';
     const ntrNeelUrl = 'https://pub-4b8805119f7f49ae848fa1aaa57dd6d0.r2.dev/Photos%20Thumbnails/Movie%20Thumbnails/NTR-NEEL.jpg';
+    const dragonUrl = 'https://pub-4b8805119f7f49ae848fa1aaa57dd6d0.r2.dev/VideoCuts%20Thumbnails/Movie%20Cuts%20Thumbnails/dragon.jpg';
+
+    if (fLower === 'dragon' || fLower.includes('dragon')) {
+      if (!assignedUrls || !assignedUrls.has(dragonUrl)) {
+        if (assignedUrls) assignedUrls.add(dragonUrl);
+        return dragonUrl;
+      }
+    }
 
     if (fLower === 'naaga' || fLower === 'naga') {
       if (!assignedUrls || !assignedUrls.has(naagaUrl)) {
@@ -2987,10 +2996,24 @@ export default function App() {
         return matchedMovie.posterUrl;
       }
     }
+
+    // Landscape thumbnails fallback if no portrait match exists
+    if (r2Data?.thumbnailsL) {
+      const match = r2Data.thumbnailsL.find((thumb: any) => 
+        (matchesMovie(thumb.key, folderName) || matchesMovie(folderName, thumb.key) || thumb.key.toLowerCase().includes(fLower) || fLower.includes(thumb.key.toLowerCase().replace(/\.[^/.]+$/, ""))) &&
+        (!assignedUrls || !assignedUrls.has(thumb.url))
+      );
+      if (match) {
+        if (assignedUrls) assignedUrls.add(match.url);
+        return match.url;
+      }
+    }
     
     if (photos.length > 0) {
+      const isVideoFile = (url: string | undefined) => !url || /\.(mp4|webm|mkv|mov|avi)(\?.*)?$/i.test(url);
       const portraitFile = photos.find(p => {
         const url = p.imageUrl || p.videoUrl;
+        if (isVideoFile(url)) return false;
         if (assignedUrls && assignedUrls.has(url)) return false;
         if (p.dimensions) {
           const parts = p.dimensions.split('x');
@@ -3010,6 +3033,7 @@ export default function App() {
 
       const unusedFile = photos.find(p => {
         const url = p.imageUrl || p.videoUrl;
+        if (isVideoFile(url)) return false;
         return !assignedUrls || !assignedUrls.has(url);
       });
       if (unusedFile) {
@@ -3018,9 +3042,12 @@ export default function App() {
         return url;
       }
 
-      const url = photos[0].imageUrl || photos[0].videoUrl;
-      if (assignedUrls) assignedUrls.add(url);
-      return url;
+      const firstImage = photos.find(p => !isVideoFile(p.imageUrl || p.videoUrl));
+      if (firstImage) {
+        const url = firstImage.imageUrl || firstImage.videoUrl;
+        if (assignedUrls) assignedUrls.add(url);
+        return url;
+      }
     }
     
     return 'https://images.unsplash.com/photo-1594909122845-11baa439b7bf?auto=format&fit=crop&q=80&w=400';
@@ -3040,6 +3067,14 @@ export default function App() {
       if (!assignedUrls || !assignedUrls.has(naagaUrlL)) {
         if (assignedUrls) assignedUrls.add(naagaUrlL);
         return naagaUrlL;
+      }
+    }
+
+    const dragonUrlL = 'https://pub-4b8805119f7f49ae848fa1aaa57dd6d0.r2.dev/Movie%20Posters/Landscape/Dragon.jpg';
+    if (fLower === 'dragon' || fLower.includes('dragon')) {
+      if (!assignedUrls || !assignedUrls.has(dragonUrlL)) {
+        if (assignedUrls) assignedUrls.add(dragonUrlL);
+        return dragonUrlL;
       }
     }
 

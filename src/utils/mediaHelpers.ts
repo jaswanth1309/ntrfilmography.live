@@ -343,6 +343,7 @@ export function compressR2Data(data: any): { b: string; f: any } {
     photosMovieThumbnails: compressList(data.photosMovieThumbnails),
     photosEventThumbnails: compressList(data.photosEventThumbnails || []),
     videosEventThumbnails: compressList(data.videosEventThumbnails || []),
+    videoCutsMovieThumbnails: compressList(data.videoCutsMovieThumbnails || []),
     audio: compressList(data.audio || []),
     bucketFiles: compressList(data.bucketFiles || [])
   };
@@ -395,6 +396,7 @@ export function decompressR2Data(compressed: { b: string; f: any }): any {
     photosMovieThumbnails: decompressList(data.photosMovieThumbnails),
     photosEventThumbnails: decompressList(data.photosEventThumbnails || []),
     videosEventThumbnails: decompressList(data.videosEventThumbnails || []),
+    videoCutsMovieThumbnails: decompressList(data.videoCutsMovieThumbnails || []),
     audio: decompressList(data.audio || []),
     bucketFiles: decompressList(data.bucketFiles || [])
   };
