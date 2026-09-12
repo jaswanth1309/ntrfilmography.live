@@ -6740,6 +6740,22 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {/* Homepage Glassmorphism Designer Credit Tab */}
+      {currentView === 'home' && (
+        <a
+          id="designed-by-instagram-credit"
+          href="https://www.instagram.com/uni_cre8?stkn=c3huYmtramR1b2h0"
+          target="_blank"
+          rel="noopener noreferrer"
+          className={`fixed ${currentAudioSong ? 'bottom-20' : 'bottom-4'} right-4 z-30 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-zinc-950/60 hover:bg-zinc-900/80 backdrop-blur-md border border-white/10 hover:border-pink-500/40 text-[10px] sm:text-xs text-zinc-400 hover:text-white shadow-[0_4px_20px_rgba(0,0,0,0.35)] transition-all duration-200 group active:scale-95 select-none`}
+          title="Designed by @uni_cre8 on Instagram"
+        >
+          <span className="text-zinc-400 group-hover:text-zinc-300 font-normal">Designed by</span>
+          <Instagram className="w-3 h-3 text-pink-500 group-hover:scale-110 transition-transform shrink-0" />
+          <span className="font-semibold text-zinc-300 group-hover:text-pink-400 transition-colors">@uni_cre8</span>
+        </a>
+      )}
       </motion.div>
     </div>
   );
