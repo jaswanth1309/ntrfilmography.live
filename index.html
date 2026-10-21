@@ -88,6 +88,25 @@
       ]
     }
     </script>
+    <!-- Early Rejection & Error Filter for Dev Proxy Environment -->
+    <script>
+      (function() {
+        window.addEventListener('unhandledrejection', function(event) {
+          var reason = event && event.reason;
+          var msg = (reason && (reason.message || String(reason))) || '';
+          // Suppress benign Vite dev server WebSocket disconnect errors in cloud proxy
+          if (msg.indexOf('WebSocket closed without opened') !== -1 || msg.indexOf('failed to connect to websocket') !== -1 || (msg.indexOf('[vite]') !== -1 && msg.indexOf('websocket') !== -1)) {
+            event.preventDefault();
+            return;
+          }
+          // Suppress benign media play() interruption errors when navigating or pausing
+          if (reason && reason.name === 'AbortError' && (msg.indexOf('play()') !== -1 || msg.indexOf('interrupted') !== -1)) {
+            event.preventDefault();
+            return;
+          }
+        });
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

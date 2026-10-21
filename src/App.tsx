@@ -337,7 +337,9 @@ export default function App() {
     if (!audioRef.current) return;
     if (isPlayingAudio) {
       audioRef.current.play().catch(err => {
-        console.warn('Audio play error:', err.message);
+        if (err.name !== 'AbortError' && err.name !== 'NotAllowedError') {
+          console.warn('Audio play error:', err.message);
+        }
       });
     } else {
       audioRef.current.pause();
@@ -354,7 +356,9 @@ export default function App() {
       }
       if (isPlayingAudio) {
         audioRef.current.play().catch(err => {
-          console.warn('Audio track play error:', err.message);
+          if (err.name !== 'AbortError' && err.name !== 'NotAllowedError') {
+            console.warn('Audio track play error:', err.message);
+          }
         });
       }
     } else {
@@ -2103,7 +2107,7 @@ export default function App() {
               setR2Data(decompressedData);
               hasValidCache = true;
             } else {
-              console.warn('Stale/incomplete cache found in IndexedDB, ignoring and forcing fresh fetch');
+              console.info('Refreshing local cache from latest server dataset');
               try {
                 await idbMediaCache.delete(cacheKey);
               } catch (e) {}
@@ -2111,7 +2115,7 @@ export default function App() {
           }
         }
       } catch (idbErr) {
-        console.warn('IndexedDB cache read failed, trying localStorage fallback:', idbErr);
+        console.info('IndexedDB cache check note, using secondary fallback:', idbErr);
       }
 
       // 2. Try reading from localStorage as fallback
@@ -2129,7 +2133,7 @@ export default function App() {
                   setR2Data(decompressedData);
                   hasValidCache = true;
                 } else {
-                  console.warn('Stale/incomplete cache found in localStorage, ignoring and forcing fresh fetch');
+                  console.info('Refreshing localStorage cache from latest server dataset');
                   try {
                     localStorage.removeItem(cacheKey);
                   } catch (e) {}
@@ -2138,7 +2142,7 @@ export default function App() {
             }
           }
         } catch (lsErr) {
-          console.warn('Failed to parse R2 localStorage cache:', lsErr);
+          console.info('Secondary cache notice:', lsErr);
         }
       }
     }
@@ -6745,15 +6749,15 @@ export default function App() {
       {currentView === 'home' && (
         <a
           id="designed-by-instagram-credit"
-          href="https://www.instagram.com/uni_cre8?stkn=c3huYmtramR1b2h0"
+          href="https://www.instagram.com/uni_create_?mdxt=aTJjMnIzM2d3amdx"
           target="_blank"
           rel="noopener noreferrer"
           className={`fixed ${currentAudioSong ? 'bottom-20' : 'bottom-4'} right-4 z-30 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-zinc-950/60 hover:bg-zinc-900/80 backdrop-blur-md border border-white/10 hover:border-pink-500/40 text-[10px] sm:text-xs text-zinc-400 hover:text-white shadow-[0_4px_20px_rgba(0,0,0,0.35)] transition-all duration-200 group active:scale-95 select-none`}
-          title="Designed by @uni_cre8 on Instagram"
+          title="Designed by @uni_create_ on Instagram"
         >
           <span className="text-zinc-400 group-hover:text-zinc-300 font-normal">Designed by</span>
           <Instagram className="w-3 h-3 text-pink-500 group-hover:scale-110 transition-transform shrink-0" />
-          <span className="font-semibold text-zinc-300 group-hover:text-pink-400 transition-colors">@uni_cre8</span>
+          <span className="font-semibold text-zinc-300 group-hover:text-pink-400 transition-colors">@uni_create_</span>
         </a>
       )}
       </motion.div>
