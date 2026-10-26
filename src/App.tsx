@@ -3585,8 +3585,17 @@ export default function App() {
             transition={{ duration: 0.6, ease: "easeInOut" }}
             className="fixed inset-0 z-50 bg-black flex flex-col items-center justify-center p-6 select-none"
           >
-            <div className="max-w-md w-full flex flex-col items-center gap-8">
+            <div className="max-w-md w-full flex flex-col items-center gap-6 sm:gap-7 text-center">
               
+              {/* Lock Badge */}
+              <div className="relative flex items-center justify-center select-none">
+                <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl sm:rounded-3xl bg-zinc-950/80 border border-amber-500/40 backdrop-blur-xl flex items-center justify-center text-amber-500 shadow-[0_0_35px_rgba(245,158,11,0.25)] transition-all duration-300">
+                  <Lock className="w-8 h-8 sm:w-10 sm:h-10 text-amber-400 drop-shadow-[0_0_10px_rgba(245,158,11,0.6)]" />
+                </div>
+                <div className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-amber-500 animate-ping opacity-75" />
+                <div className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-amber-500 border-2 border-black" />
+              </div>
+
               {/* Title */}
               <div className="text-center">
                 <h2 className="text-2xl sm:text-3xl font-black text-white uppercase tracking-wider">
@@ -3594,37 +3603,11 @@ export default function App() {
                 </h2>
               </div>
 
-              {/* Dynamic Running Track & Loading Line */}
-              <div className="w-full relative py-2">
-                {/* Background Track Line */}
-                <div className="w-full bg-zinc-900/80 border border-zinc-800/30 rounded-full h-1.5 overflow-hidden relative">
-                  {/* Active Fills Progress Bar */}
-                  <div 
-                    className="bg-gradient-to-r from-amber-600 to-amber-400 h-full rounded-full transition-all duration-300 shadow-[0_0_12px_rgba(245,158,11,0.8)]"
-                    style={{ width: `${Math.min(loadingProgress, 100)}%` }}
-                  />
-                </div>
-              </div>
-
-              {/* Progress text that converts into Enter Button once 100% complete */}
-              <div className="text-center flex flex-col items-center justify-center w-full min-h-[48px]">
-                {loadingProgress < 100 ? (
-                  <div className="font-mono font-bold text-amber-500/80 text-xs tracking-widest animate-pulse">
-                    {Math.round(loadingProgress)}% COMPLETED
-                  </div>
-                ) : (
-                  <motion.button
-                    initial={{ opacity: 0, scale: 0.95 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                    onClick={handleEnterApp}
-                    className="py-2 px-5 bg-gradient-to-r from-amber-500 via-amber-400 to-amber-500 hover:from-amber-400 hover:to-amber-500 text-zinc-950 font-black tracking-widest text-xs uppercase rounded-lg shadow-[0_0_18px_rgba(245,158,11,0.5)] hover:shadow-[0_0_24px_rgba(245,158,11,0.8)] border border-amber-300 transition-all flex items-center justify-center gap-1.5 cursor-pointer group active:scale-95"
-                  >
-                    <span className="text-zinc-950 font-extrabold tracking-widest">ENTER</span>
-                    <ArrowRight className="w-3.5 h-3.5 translate-x-0 group-hover:translate-x-0.5 transition-transform stroke-[2.5] text-zinc-950" />
-                  </motion.button>
-                )}
+              {/* Lock Message Text */}
+              <div className="max-w-xs sm:max-w-sm px-4 py-3 rounded-2xl bg-zinc-900/70 border border-amber-500/20 backdrop-blur-md shadow-[0_4px_24px_rgba(0,0,0,0.5)]">
+                <p className="text-xs sm:text-sm font-semibold text-zinc-300 leading-relaxed tracking-wide select-text">
+                  Trolls kanna edits ekkuva chesey roju automatic gah unlock avthundhi
+                </p>
               </div>
 
             </div>
