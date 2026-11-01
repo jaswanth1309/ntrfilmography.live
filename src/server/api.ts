@@ -91,6 +91,16 @@ function compressR2Data(data: any): { b: string; f: any } {
         publicUrlBase = item.url.substring(0, idx);
         return true;
       }
+      const encodedKey = String(item.key).split('/').map(encodeURIComponent).join('/');
+      const encIdx = item.url.lastIndexOf('/' + encodedKey);
+      if (encIdx !== -1) {
+        publicUrlBase = item.url.substring(0, encIdx);
+        return true;
+      }
+      try {
+        publicUrlBase = new URL(item.url).origin;
+        return true;
+      } catch {}
     }
     return false;
   };
@@ -228,11 +238,11 @@ class IPAddressRateLimiter {
 
   private prune() {
     const now = Date.now();
-    for (const [ip, record] of this.store.entries()) {
+    this.store.forEach((record, ip) => {
       if (now > record.resetTime) {
         this.store.delete(ip);
       }
-    }
+    });
   }
 }
 
@@ -852,7 +862,8 @@ api.get("/media/download", async (c) => {
   // Fallback to proxy stream via URL (SSRF guarded proxying)
   let targetUrl = fileUrl;
   if (!targetUrl && activeKey) {
-    targetUrl = `${publicUrl}/${activeKey}`;
+    const encodedKey = activeKey.split("/").map(encodeURIComponent).join("/");
+    targetUrl = `${publicUrl}/${encodedKey}`;
   }
 
   if (!targetUrl) {
@@ -866,7 +877,9 @@ api.get("/media/download", async (c) => {
     }, 403);
   }
 
-  const encodedTargetUrl = targetUrl.startsWith("http") ? encodeURI(decodeURI(targetUrl)) : targetUrl;
+  const encodedTargetUrl = targetUrl.startsWith("http") && !targetUrl.includes("%")
+    ? encodeURI(targetUrl)
+    : targetUrl;
 
   const fetchHeaders: Record<string, string> = {};
   if (rangeHeader) {

@@ -5,7 +5,25 @@ import {defineConfig} from 'vite';
 
 export default defineConfig(() => {
   return {
-    plugins: [react(), tailwindcss()],
+    plugins: [
+      react(),
+      tailwindcss(),
+      {
+        name: 'disable-vite-hmr-ws',
+        enforce: 'post',
+        transform(code, id) {
+          if (id.includes('vite/dist/client/client.mjs')) {
+            return code
+              .replace('console.debug("[vite] connecting...");', '')
+              .replace('ws.send(JSON.stringify(data));', 'ws?.send(JSON.stringify(data));')
+              .replace(
+                'transport.connect(createHMRHandler(handleMessage));',
+                '// HMR WebSocket disabled in cloud proxy environment'
+              );
+          }
+        },
+      },
+    ],
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),

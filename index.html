@@ -17,7 +17,7 @@
     <meta property="og:url" content="https://ntrfilmography.live/" />
     <meta property="og:title" content="NTR Filmography – Complete Movies, Career & Cinematic Archive" />
     <meta property="og:description" content="Explore the complete NTR Filmography: a comprehensive cinematic archive featuring movies, release details, songs, HD photos, video cuts, and career highlights." />
-    <meta property="og:image" content="https://ntrfilmography.live/og-image.jpg" />
+    <meta property="og:image" content="https://pub-4b8805119f7f49ae848fa1aaa57dd6d0.r2.dev/BG%20Images/Man%20of%20Masses%20NTR%20L.png" />
     <meta property="og:site_name" content="NTR Filmography" />
 
     <!-- Twitter Card -->
@@ -25,7 +25,7 @@
     <meta name="twitter:url" content="https://ntrfilmography.live/" />
     <meta name="twitter:title" content="NTR Filmography – Complete Movies, Career & Cinematic Archive" />
     <meta name="twitter:description" content="Explore the complete NTR Filmography: a comprehensive cinematic archive featuring movies, release details, songs, HD photos, video cuts, and career highlights." />
-    <meta name="twitter:image" content="https://ntrfilmography.live/og-image.jpg" />
+    <meta name="twitter:image" content="https://pub-4b8805119f7f49ae848fa1aaa57dd6d0.r2.dev/BG%20Images/Man%20of%20Masses%20NTR%20L.png" />
 
     <!-- Favicon and App Manifest -->
     <link rel="icon" href="/favicon.ico?v=4">
@@ -88,25 +88,6 @@
         }
       ]
     }
-    </script>
-    <!-- Early Rejection & Error Filter for Dev Proxy Environment -->
-    <script>
-      (function() {
-        window.addEventListener('unhandledrejection', function(event) {
-          var reason = event && event.reason;
-          var msg = (reason && (reason.message || String(reason))) || '';
-          // Suppress benign Vite dev server WebSocket disconnect errors in cloud proxy
-          if (msg.indexOf('WebSocket closed without opened') !== -1 || msg.indexOf('failed to connect to websocket') !== -1 || (msg.indexOf('[vite]') !== -1 && msg.indexOf('websocket') !== -1)) {
-            event.preventDefault();
-            return;
-          }
-          // Suppress benign media play() interruption errors when navigating or pausing
-          if (reason && reason.name === 'AbortError' && (msg.indexOf('play()') !== -1 || msg.indexOf('interrupted') !== -1)) {
-            event.preventDefault();
-            return;
-          }
-        });
-      })();
     </script>
   </head>
   <body>

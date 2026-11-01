@@ -619,15 +619,26 @@ export default function App() {
   // Cloudflare R2 Sync States
   const [r2Data, setR2Data] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [loadingState, setLoadingState] = useState<'idle' | 'loading' | 'finishing' | 'ready'>('loading');
+  const [loadingState, setLoadingState] = useState<'idle' | 'loading' | 'finishing' | 'ready'>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        if (
+          localStorage.getItem('ntr_r2_cache_initialized') === 'true' ||
+          localStorage.getItem('ntr_r2_media_cache_v2')
+        ) {
+          return 'ready';
+        }
+      } catch {}
+    }
+    return 'loading';
+  });
   const [loadingProgress, setLoadingProgress] = useState(0);
 
   const handleEnterApp = useCallback(() => {
     triggerHaptic('medium');
-    setCurrentView('home');
-    setActivePhotoSubView('selected');
-    setActiveVideoSubView('selected');
-    setActiveOfflineSubView('selected');
+    try {
+      localStorage.setItem('ntr_r2_cache_initialized', 'true');
+    } catch {}
     setLoadingState('ready');
     setIsLoading(false);
   }, []);
@@ -1852,40 +1863,39 @@ export default function App() {
     const abortController = new AbortController();
     abortControllerRef.current = abortController;
 
-    const cacheKey = 'ntr_r2_media_cache';
+    const cacheKey = 'ntr_r2_media_cache_v2';
     let hasValidCache = false;
+    let isCacheStale = false;
     let activeData: any = null;
 
     React.startTransition(() => {
       setError(null);
     });
 
-    // Start with loading state
-    setIsLoading(true);
-    setLoadingState('loading');
-    setLoadingProgress(0);
-
     let targetProgress = 15; // Start with 15% target
     let currentProgress = 0;
     let interval: any = null;
 
-    interval = setInterval(() => {
-      if (currentProgress < targetProgress) {
-        const diff = targetProgress - currentProgress;
-        if (diff > 20) {
-          currentProgress += Math.random() * 1.5 + 0.5;
-        } else if (diff > 5) {
-          currentProgress += Math.random() * 0.8 + 0.2;
-        } else {
-          currentProgress += Math.random() * 0.3 + 0.05;
+    const startProgressAnimation = () => {
+      if (interval) clearInterval(interval);
+      interval = setInterval(() => {
+        if (currentProgress < targetProgress) {
+          const diff = targetProgress - currentProgress;
+          if (diff > 20) {
+            currentProgress += Math.random() * 1.5 + 0.5;
+          } else if (diff > 5) {
+            currentProgress += Math.random() * 0.8 + 0.2;
+          } else {
+            currentProgress += Math.random() * 0.3 + 0.05;
+          }
+        } else if (currentProgress < 99) {
+          // Continuous smooth crawling so it NEVER gets stuck
+          currentProgress += 0.02 + Math.random() * 0.03;
         }
-      } else if (currentProgress < 99) {
-        // Continuous smooth crawling so it NEVER gets stuck
-        currentProgress += 0.02 + Math.random() * 0.03;
-      }
-      const finalVal = Math.min(currentProgress, 99);
-      setLoadingProgress(finalVal);
-    }, 45);
+        const finalVal = Math.min(currentProgress, 99);
+        setLoadingProgress(finalVal);
+      }, 45);
+    };
 
     const isCompleteData = (d: any): boolean => {
       if (!d) return false;
@@ -2100,18 +2110,17 @@ export default function App() {
         const cached = await idbMediaCache.get(cacheKey);
         if (cached && cached.data && cached.timestamp) {
           const cacheAge = Date.now() - cached.timestamp;
-          if (cacheAge < 2 * 60 * 60 * 1000) {
-            const decompressedData = cached.compressed ? decompressR2Data(cached.data) : cached.data;
-            if (isCompleteData(decompressedData)) {
-              activeData = decompressedData;
-              setR2Data(decompressedData);
-              hasValidCache = true;
-            } else {
-              console.info('Refreshing local cache from latest server dataset');
-              try {
-                await idbMediaCache.delete(cacheKey);
-              } catch (e) {}
-            }
+          const decompressedData = cached.compressed ? decompressR2Data(cached.data) : cached.data;
+          if (isCompleteData(decompressedData)) {
+            activeData = decompressedData;
+            setR2Data(decompressedData);
+            hasValidCache = true;
+            isCacheStale = cacheAge >= 2 * 60 * 60 * 1000;
+          } else {
+            console.info('Refreshing local cache from latest server dataset');
+            try {
+              await idbMediaCache.delete(cacheKey);
+            } catch (e) {}
           }
         }
       } catch (idbErr) {
@@ -2126,18 +2135,17 @@ export default function App() {
             const parsed = JSON.parse(cachedStr);
             if (parsed && parsed.data && parsed.timestamp) {
               const cacheAge = Date.now() - parsed.timestamp;
-              if (cacheAge < 2 * 60 * 60 * 1000) {
-                const decompressedData = parsed.compressed ? decompressR2Data(parsed.data) : parsed.data;
-                if (isCompleteData(decompressedData)) {
-                  activeData = decompressedData;
-                  setR2Data(decompressedData);
-                  hasValidCache = true;
-                } else {
-                  console.info('Refreshing localStorage cache from latest server dataset');
-                  try {
-                    localStorage.removeItem(cacheKey);
-                  } catch (e) {}
-                }
+              const decompressedData = parsed.compressed ? decompressR2Data(parsed.data) : parsed.data;
+              if (isCompleteData(decompressedData)) {
+                activeData = decompressedData;
+                setR2Data(decompressedData);
+                hasValidCache = true;
+                isCacheStale = cacheAge >= 2 * 60 * 60 * 1000;
+              } else {
+                console.info('Refreshing localStorage cache from latest server dataset');
+                try {
+                  localStorage.removeItem(cacheKey);
+                } catch (e) {}
               }
             }
           }
@@ -2147,12 +2155,35 @@ export default function App() {
       }
     }
 
-    if (hasValidCache) {
-      targetProgress = 45;
+    if (hasValidCache && !isRescan) {
+      // Cache exists! Keep app ready immediately without showing initial loader
+      try {
+        localStorage.setItem('ntr_r2_cache_initialized', 'true');
+      } catch {}
+      React.startTransition(() => {
+        setLoadingState('ready');
+        setIsLoading(false);
+      });
+      // Preload thumbnails silently in the background
+      doPreloadStage(activeData).catch(() => {});
+      if (!isCacheStale) {
+        return;
+      }
+    } else {
+      // Cache was cleared or rescan requested
+      setIsLoading(true);
+      if (!isRescan) {
+        try {
+          localStorage.removeItem('ntr_r2_cache_initialized');
+        } catch {}
+        setLoadingState('loading');
+        setLoadingProgress(0);
+        startProgressAnimation();
+      }
     }
 
     try {
-      if (!hasValidCache) {
+      if (!hasValidCache || isCacheStale) {
         const url = isRescan ? `${API_BASE_URL}/api/v1/media/all?rescan=true` : `${API_BASE_URL}/api/v1/media/all`;
         
         let data: any = null;
@@ -2256,23 +2287,24 @@ export default function App() {
                 data: compressed || activeData,
                 compressed: !!compressed
               });
+              localStorage.setItem('ntr_r2_cache_initialized', 'true');
             } catch (idbWriteErr) {
               console.warn('Failed to write R2 cache to IndexedDB:', idbWriteErr);
             }
           })(),
           (async () => {
             try {
-              if (compressed) {
-                localStorage.setItem(cacheKey, JSON.stringify({
-                  timestamp: Date.now(),
-                  data: compressed,
-                  compressed: true
-                }));
+              localStorage.setItem('ntr_r2_cache_initialized', 'true');
+              const payload = JSON.stringify({
+                timestamp: Date.now(),
+                data: compressed || activeData,
+                compressed: !!compressed
+              });
+              // Only write to localStorage if payload fits comfortably within browser 5MB UTF-16 quota
+              if (payload.length < 1_500_000) {
+                localStorage.setItem(cacheKey, payload);
               } else {
-                localStorage.setItem(cacheKey, JSON.stringify({
-                  timestamp: Date.now(),
-                  data: activeData
-                }));
+                localStorage.removeItem(cacheKey);
               }
             } catch (lsWriteErr: any) {
               if (lsWriteErr.name === 'QuotaExceededError' || lsWriteErr.message?.includes('quota')) {
@@ -2280,7 +2312,6 @@ export default function App() {
                   localStorage.removeItem(cacheKey);
                 } catch (e) {}
               }
-              console.warn('Failed to write secondary fallback R2 cache to localStorage:', lsWriteErr.message || lsWriteErr);
             }
           })()
         ]);
@@ -2289,6 +2320,12 @@ export default function App() {
           setR2Data(activeData);
           setError(null);
         });
+      }
+
+      if (hasValidCache && !isRescan) {
+        // Silent background refresh completed
+        setIsLoading(false);
+        return;
       }
 
       targetProgress = 45;
@@ -2300,19 +2337,21 @@ export default function App() {
       targetProgress = 100;
       if (interval) clearInterval(interval);
 
-      await new Promise<void>((resolveComplete) => {
-        let finalProgress = currentProgress;
-        const completeInterval = setInterval(() => {
-          if (finalProgress < 100) {
-            // Speed up smoothly to 100%
-            finalProgress += Math.max(2.0, (100 - finalProgress) * 0.15);
-            setLoadingProgress(Math.min(finalProgress, 100));
-          } else {
-            clearInterval(completeInterval);
-            resolveComplete();
-          }
-        }, 30);
-      });
+      if (!isRescan) {
+        await new Promise<void>((resolveComplete) => {
+          let finalProgress = currentProgress;
+          const completeInterval = setInterval(() => {
+            if (finalProgress < 100) {
+              // Speed up smoothly to 100%
+              finalProgress += Math.max(2.0, (100 - finalProgress) * 0.15);
+              setLoadingProgress(Math.min(finalProgress, 100));
+            } else {
+              clearInterval(completeInterval);
+              resolveComplete();
+            }
+          }, 30);
+        });
+      }
 
       React.startTransition(() => {
         setLoadingProgress(100);
@@ -2330,6 +2369,12 @@ export default function App() {
       }
       
       if (abortController.signal.aborted) return;
+
+      if (hasValidCache && !isRescan) {
+        if (interval) clearInterval(interval);
+        setIsLoading(false);
+        return;
+      }
 
       console.warn('Serving pre-seeded local assets (offline backup active). Error detail:', err.message);
       
@@ -3585,17 +3630,8 @@ export default function App() {
             transition={{ duration: 0.6, ease: "easeInOut" }}
             className="fixed inset-0 z-50 bg-black flex flex-col items-center justify-center p-6 select-none"
           >
-            <div className="max-w-md w-full flex flex-col items-center gap-6 sm:gap-7 text-center">
+            <div className="max-w-md w-full flex flex-col items-center gap-7 sm:gap-8 text-center">
               
-              {/* Lock Badge */}
-              <div className="relative flex items-center justify-center select-none">
-                <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl sm:rounded-3xl bg-zinc-950/80 border border-amber-500/40 backdrop-blur-xl flex items-center justify-center text-amber-500 shadow-[0_0_35px_rgba(245,158,11,0.25)] transition-all duration-300">
-                  <Lock className="w-8 h-8 sm:w-10 sm:h-10 text-amber-400 drop-shadow-[0_0_10px_rgba(245,158,11,0.6)]" />
-                </div>
-                <div className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-amber-500 animate-ping opacity-75" />
-                <div className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-amber-500 border-2 border-black" />
-              </div>
-
               {/* Title */}
               <div className="text-center">
                 <h2 className="text-2xl sm:text-3xl font-black text-white uppercase tracking-wider">
@@ -3603,12 +3639,24 @@ export default function App() {
                 </h2>
               </div>
 
-              {/* Lock Message Text */}
-              <div className="max-w-xs sm:max-w-sm px-4 py-3 rounded-2xl bg-zinc-900/70 border border-amber-500/20 backdrop-blur-md shadow-[0_4px_24px_rgba(0,0,0,0.5)]">
-                <p className="text-xs sm:text-sm font-semibold text-zinc-300 leading-relaxed tracking-wide select-text">
-                  Trolls kanna edits ekkuva chesey roju automatic gah unlock avthundhi
-                </p>
+              {/* Loading Progress Bar */}
+              <div className="w-full h-1.5 bg-zinc-900 rounded-full overflow-hidden">
+                <motion.div
+                  className="h-full bg-gradient-to-r from-amber-600 via-amber-500 to-yellow-400 rounded-full"
+                  initial={{ width: '0%' }}
+                  animate={{ width: `${Math.min(Math.max(loadingProgress, 0), 100)}%` }}
+                  transition={{ duration: 0.1, ease: "linear" }}
+                />
               </div>
+
+              {/* Enter Button */}
+              <button
+                onClick={handleEnterApp}
+                className="px-6 py-2.5 rounded-xl bg-amber-500/80 hover:bg-amber-500 border border-amber-400/60 text-black font-black text-xs uppercase tracking-wider flex items-center gap-2 shadow-[0_0_25px_rgba(245,158,11,0.45)] hover:shadow-[0_0_35px_rgba(245,158,11,0.7)] transition-all duration-300 active:scale-95 cursor-pointer"
+              >
+                <span>ENTER</span>
+                <ArrowRight className="w-3.5 h-3.5 stroke-[2.5]" />
+              </button>
 
             </div>
           </motion.div>

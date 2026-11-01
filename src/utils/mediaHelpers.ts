@@ -284,6 +284,16 @@ export function compressR2Data(data: any): { b: string; f: any } {
         publicUrlBase = item.url.substring(0, idx);
         return true;
       }
+      const encodedKey = String(item.key).split('/').map(encodeURIComponent).join('/');
+      const encIdx = item.url.lastIndexOf('/' + encodedKey);
+      if (encIdx !== -1) {
+        publicUrlBase = item.url.substring(0, encIdx);
+        return true;
+      }
+      try {
+        publicUrlBase = new URL(item.url).origin;
+        return true;
+      } catch {}
     }
     return false;
   };
@@ -360,9 +370,12 @@ export function decompressR2Data(compressed: { b: string; f: any }): any {
 
   const decompressFile = (file: any) => {
     if (!file) return null;
+    const encodedKey = typeof file.k === 'string'
+      ? file.k.split('/').map(encodeURIComponent).join('/')
+      : '';
     return {
       key: file.k,
-      url: base ? `${base}/${file.k}` : '',
+      url: base ? `${base}/${encodedKey}` : '',
       size: file.s,
       lastModified: file.m ? new Date(file.m).toISOString() : ''
     };
