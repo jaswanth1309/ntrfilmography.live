@@ -98,9 +98,12 @@ function compressR2Data(data: any): { b: string; f: any } {
         return true;
       }
       try {
-        publicUrlBase = new URL(item.url).origin;
+        const parsed = new URL(item.url);
+        publicUrlBase = parsed.origin;
         return true;
-      } catch {}
+      } catch {
+        // ignore invalid URL
+      }
     }
     return false;
   };
@@ -198,7 +201,12 @@ api.use("*", async (c, next) => {
   c.header("X-Content-Type-Options", "nosniff");
   c.header("X-XSS-Protection", "1; mode=block");
   c.header("Referrer-Policy", "strict-origin-when-cross-origin");
-  c.header("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+  if (c.req.path.endsWith("/media/download")) {
+    // iOS Safari Download Manager fails when Content-Disposition: attachment is paired with Cache-Control: no-store
+    c.header("Cache-Control", "private, max-age=3600");
+  } else {
+    c.header("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+  }
   await next();
 });
 
@@ -238,11 +246,11 @@ class IPAddressRateLimiter {
 
   private prune() {
     const now = Date.now();
-    this.store.forEach((record, ip) => {
+    for (const [ip, record] of this.store.entries()) {
       if (now > record.resetTime) {
         this.store.delete(ip);
       }
-    });
+    }
   }
 }
 
@@ -785,25 +793,33 @@ api.get("/media/download", async (c) => {
 
   if (activeKey && bucket) {
     try {
+      const candidateKeys = activeKey.startsWith("ntrfilmography/")
+        ? [activeKey, activeKey.slice("ntrfilmography/".length)]
+        : [activeKey, `ntrfilmography/${activeKey}`];
+
       let file: any = null;
-      if (rangeHeader) {
-        try {
-          file = await (bucket as any).get(activeKey, { range: rangeHeader });
-        } catch (rangeErr) {
-          console.warn("[DOWNLOAD PROXY] R2 get with range failed, trying full get:", rangeErr);
-          file = await (bucket as any).get(activeKey);
+      for (const candidateKey of candidateKeys) {
+        if (rangeHeader) {
+          try {
+            file = await (bucket as any).get(candidateKey, { range: rangeHeader });
+          } catch (rangeErr) {
+            console.warn("[DOWNLOAD PROXY] R2 get with range failed, trying full get:", rangeErr);
+            file = await (bucket as any).get(candidateKey);
+          }
+        } else {
+          file = await (bucket as any).get(candidateKey);
         }
-      } else {
-        file = await (bucket as any).get(activeKey);
+        if (file) break;
       }
 
       if (file) {
-        const contentType = file.httpMetadata?.contentType || "application/octet-stream";
         const totalSize = file.size;
-
         const utf8Filename = encodeURIComponent(safeFilename);
-        c.header("Content-Disposition", `attachment; filename="${safeFilename.replace(/[^a-zA-Z0-9._-]/g, "_")}"; filename*=UTF-8''${utf8Filename}`);
-        c.header("Content-Type", contentType);
+        const asciiFilename = safeFilename.replace(/[^a-zA-Z0-9._-]/g, "_");
+        c.header("Content-Disposition", `attachment; filename="${asciiFilename}"; filename*=UTF-8''${utf8Filename}`);
+        // Force application/octet-stream so Safari/iOS WebKit saves the file instead of hijacking media into QuickTime/AVPlayer
+        c.header("Content-Type", "application/octet-stream");
+        c.header("Cache-Control", "private, max-age=3600");
         c.header("Accept-Ranges", "bytes");
 
         if (file.range) {
@@ -823,18 +839,34 @@ api.get("/media/download", async (c) => {
     }
   } else if (activeKey && s3 && bucketName) {
     try {
-      const getCommand = new GetObjectCommand({
-        Bucket: bucketName,
-        Key: activeKey,
-        Range: rangeHeader || undefined,
-      });
+      const candidateKeys = activeKey.startsWith("ntrfilmography/")
+        ? [activeKey, activeKey.slice("ntrfilmography/".length)]
+        : [activeKey, `ntrfilmography/${activeKey}`];
 
-      const s3Response = await s3.send(getCommand);
+      let s3Response: any = null;
+      for (const candidateKey of candidateKeys) {
+        try {
+          const getCommand = new GetObjectCommand({
+            Bucket: bucketName,
+            Key: candidateKey,
+            Range: rangeHeader || undefined,
+          });
+          const res = await s3.send(getCommand);
+          if (res && res.Body) {
+            s3Response = res;
+            break;
+          }
+        } catch {
+          // try next candidate key
+        }
+      }
+
       if (s3Response && s3Response.Body) {
-        const contentType = s3Response.ContentType || "application/octet-stream";
         const utf8Filename = encodeURIComponent(safeFilename);
-        c.header("Content-Disposition", `attachment; filename="${safeFilename.replace(/[^a-zA-Z0-9._-]/g, "_")}"; filename*=UTF-8''${utf8Filename}`);
-        c.header("Content-Type", contentType);
+        const asciiFilename = safeFilename.replace(/[^a-zA-Z0-9._-]/g, "_");
+        c.header("Content-Disposition", `attachment; filename="${asciiFilename}"; filename*=UTF-8''${utf8Filename}`);
+        c.header("Content-Type", "application/octet-stream");
+        c.header("Cache-Control", "private, max-age=3600");
         c.header("Accept-Ranges", "bytes");
 
         if (s3Response.ContentRange) {
@@ -862,8 +894,10 @@ api.get("/media/download", async (c) => {
   // Fallback to proxy stream via URL (SSRF guarded proxying)
   let targetUrl = fileUrl;
   if (!targetUrl && activeKey) {
-    const encodedKey = activeKey.split("/").map(encodeURIComponent).join("/");
-    targetUrl = `${publicUrl}/${encodedKey}`;
+    const cleanEncodedKey = activeKey.split("/").map(s => {
+      try { return encodeURIComponent(decodeURIComponent(s)); } catch { return encodeURIComponent(s); }
+    }).join("/");
+    targetUrl = `${publicUrl.replace(/\/$/, "")}/${cleanEncodedKey}`;
   }
 
   if (!targetUrl) {
@@ -877,27 +911,57 @@ api.get("/media/download", async (c) => {
     }, 403);
   }
 
-  const encodedTargetUrl = targetUrl.startsWith("http") && !targetUrl.includes("%")
-    ? encodeURI(targetUrl)
-    : targetUrl;
+  let encodedTargetUrl = targetUrl;
+  if (targetUrl.startsWith("http")) {
+    try {
+      const parsed = new URL(targetUrl);
+      const safePath = parsed.pathname
+        .split("/")
+        .map(seg => {
+          try {
+            return encodeURIComponent(decodeURIComponent(seg));
+          } catch {
+            return encodeURIComponent(seg);
+          }
+        })
+        .join("/");
+      encodedTargetUrl = `${parsed.origin}${safePath}${parsed.search}`;
+    } catch {
+      encodedTargetUrl = encodeURI(decodeURI(targetUrl));
+    }
+  }
 
   const fetchHeaders: Record<string, string> = {};
   if (rangeHeader) {
     fetchHeaders["Range"] = rangeHeader;
   }
 
-  const response = await fetch(encodedTargetUrl, { headers: fetchHeaders });
+  let response = await fetch(encodedTargetUrl, { headers: fetchHeaders });
+  if (!response.ok && response.status === 404 && encodedTargetUrl.includes(".r2.dev/") && !encodedTargetUrl.includes("/ntrfilmography/")) {
+    try {
+      const parsedFallback = new URL(encodedTargetUrl);
+      const fallbackUrl = `${parsedFallback.origin}/ntrfilmography${parsedFallback.pathname}${parsedFallback.search}`;
+      const retryRes = await fetch(fallbackUrl, { headers: fetchHeaders });
+      if (retryRes.ok || retryRes.status === 206) {
+        response = retryRes;
+      }
+    } catch {
+      // ignore fallback error
+    }
+  }
+
   if (!response.ok && response.status !== 206) {
     return c.json({ error: `Failed to fetch original file: ${response.status} ${response.statusText}` }, 500);
   }
 
-  const contentType = response.headers.get("content-type") || "application/octet-stream";
   const contentLength = response.headers.get("content-length");
   const contentRange = response.headers.get("content-range");
 
   const utf8Filename = encodeURIComponent(safeFilename);
-  c.header("Content-Disposition", `attachment; filename="${safeFilename.replace(/[^a-zA-Z0-9._-]/g, "_")}"; filename*=UTF-8''${utf8Filename}`);
-  c.header("Content-Type", contentType);
+  const asciiFilename = safeFilename.replace(/[^a-zA-Z0-9._-]/g, "_");
+  c.header("Content-Disposition", `attachment; filename="${asciiFilename}"; filename*=UTF-8''${utf8Filename}`);
+  c.header("Content-Type", "application/octet-stream");
+  c.header("Cache-Control", "private, max-age=3600");
   c.header("Accept-Ranges", "bytes");
 
   if (contentRange) {

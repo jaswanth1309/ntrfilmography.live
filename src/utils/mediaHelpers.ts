@@ -291,9 +291,12 @@ export function compressR2Data(data: any): { b: string; f: any } {
         return true;
       }
       try {
-        publicUrlBase = new URL(item.url).origin;
+        const parsed = new URL(item.url);
+        publicUrlBase = parsed.origin;
         return true;
-      } catch {}
+      } catch {
+        // ignore invalid URL
+      }
     }
     return false;
   };
@@ -370,9 +373,8 @@ export function decompressR2Data(compressed: { b: string; f: any }): any {
 
   const decompressFile = (file: any) => {
     if (!file) return null;
-    const encodedKey = typeof file.k === 'string'
-      ? file.k.split('/').map(encodeURIComponent).join('/')
-      : '';
+    const rawKey = String(file.k || '');
+    const encodedKey = rawKey.split('/').map(encodeURIComponent).join('/');
     return {
       key: file.k,
       url: base ? `${base}/${encodedKey}` : '',

@@ -116,10 +116,13 @@ export default function MediaViewer({
     return url;
   };
 
+  const API_BASE_URL = ((import.meta as any).env?.VITE_API_BASE_URL || "").replace(/\/$/, "");
   const rawUrl = getOriginalUrl(isVideo ? (item as Video).videoUrl : isPhoto ? (item as Photo).imageUrl : ((item as any).imageUrl || (item as any).posterUrl || ''));
-  const itemKey = (item as any).id || (item as any).key || '';
+  const rawCandidateKey = (item as any).id || (item as any).key || '';
+  // If displaying a movie poster, do not pass the .mp4 movie video key as itemKey
+  const itemKey = (isPoster && /\.(mp4|mkv|webm|mov|avi)$/i.test(rawCandidateKey)) ? '' : rawCandidateKey;
   const originalFilename = getOriginalFilename(rawUrl, `${item.title}${isVideo ? '.mp4' : '.jpg'}`);
-  const proxyDownloadUrl = `/api/v1/media/download?url=${encodeURIComponent(rawUrl)}&key=${encodeURIComponent(itemKey)}&filename=${encodeURIComponent(originalFilename)}`;
+  const proxyDownloadUrl = `${API_BASE_URL}/api/v1/media/download?url=${encodeURIComponent(rawUrl)}&key=${encodeURIComponent(itemKey)}&filename=${encodeURIComponent(originalFilename)}`;
 
   const handleDownload = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -129,12 +132,15 @@ export default function MediaViewer({
       // Create a temporary link element and click it to trigger direct attachment download
       const link = document.createElement('a');
       link.href = proxyDownloadUrl;
-      link.target = '_blank';
-      link.rel = 'noopener noreferrer';
+      link.style.display = 'none';
       link.setAttribute('download', originalFilename);
       document.body.appendChild(link);
       link.click();
-      document.body.removeChild(link);
+      setTimeout(() => {
+        if (link.parentNode) {
+          document.body.removeChild(link);
+        }
+      }, 3000);
     }
   };
 

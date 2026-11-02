@@ -296,23 +296,43 @@ export default function App() {
       await Promise.all(workers);
 
       setBulkDownloadProgress(prev => ({ ...prev, filename: 'Compressing archive...' }));
-      const zipBlob = await zip.generateAsync({ type: 'blob' });
-      
+      const zipBlob = await zip.generateAsync({ type: 'blob', mimeType: 'application/zip' });
+      const zipFilename = 'NTR_Filmography_Selected_Archive.zip';
+      const safeBlob = new Blob([zipBlob], { type: 'application/octet-stream' });
+      const blobUrl = URL.createObjectURL(safeBlob);
+
+      const isSafari = typeof navigator !== 'undefined' && /^(?!.*chrome|.*crios|.*fxios|.*edgios|.*opr).*safari/i.test(navigator.userAgent);
+      const gestureExpired = isSafari && (typeof (navigator as any).userActivation !== 'undefined' ? !(navigator as any).userActivation.isActive : true);
+
       const link = document.createElement('a');
-      link.href = URL.createObjectURL(zipBlob);
-      link.download = `NTR_Filmography_Selected_Archive.zip`;
+      link.href = blobUrl;
+      link.download = zipFilename;
+      link.style.display = 'none';
       document.body.appendChild(link);
       link.click();
-      document.body.removeChild(link);
-      
+      setTimeout(() => {
+        if (link.parentNode) {
+          document.body.removeChild(link);
+        }
+        if (!gestureExpired) {
+          URL.revokeObjectURL(blobUrl);
+        }
+      }, 10000);
+
       setIsSelectMode(false);
       setSelectedItems([]);
-      showToast('Successfully downloaded selected items as a ZIP archive!', 'success');
+
+      if (gestureExpired) {
+        setReadyZipArchive({ url: blobUrl, filename: zipFilename });
+        setBulkDownloadProgress(prev => ({ ...prev, filename: 'Archive Ready to Save' }));
+      } else {
+        setIsBulkDownloading(false);
+        showToast('Successfully downloaded selected items as a ZIP archive!', 'success');
+      }
     } catch (err: any) {
       console.error('Failed to bundle assets:', err);
-      showToast('Failed to generate bulk ZIP folder. Individual download remains fully functional.', 'error');
-    } finally {
       setIsBulkDownloading(false);
+      showToast('Failed to generate bulk ZIP folder. Individual download remains fully functional.', 'error');
     }
   };
 
@@ -337,9 +357,7 @@ export default function App() {
     if (!audioRef.current) return;
     if (isPlayingAudio) {
       audioRef.current.play().catch(err => {
-        if (err.name !== 'AbortError' && err.name !== 'NotAllowedError') {
-          console.warn('Audio play error:', err.message);
-        }
+        console.warn('Audio play error:', err.message);
       });
     } else {
       audioRef.current.pause();
@@ -356,9 +374,7 @@ export default function App() {
       }
       if (isPlayingAudio) {
         audioRef.current.play().catch(err => {
-          if (err.name !== 'AbortError' && err.name !== 'NotAllowedError') {
-            console.warn('Audio track play error:', err.message);
-          }
+          console.warn('Audio track play error:', err.message);
         });
       }
     } else {
@@ -619,26 +635,15 @@ export default function App() {
   // Cloudflare R2 Sync States
   const [r2Data, setR2Data] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [loadingState, setLoadingState] = useState<'idle' | 'loading' | 'finishing' | 'ready'>(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        if (
-          localStorage.getItem('ntr_r2_cache_initialized') === 'true' ||
-          localStorage.getItem('ntr_r2_media_cache_v2')
-        ) {
-          return 'ready';
-        }
-      } catch {}
-    }
-    return 'loading';
-  });
+  const [loadingState, setLoadingState] = useState<'idle' | 'loading' | 'finishing' | 'ready'>('loading');
   const [loadingProgress, setLoadingProgress] = useState(0);
 
   const handleEnterApp = useCallback(() => {
     triggerHaptic('medium');
-    try {
-      localStorage.setItem('ntr_r2_cache_initialized', 'true');
-    } catch {}
+    setCurrentView('home');
+    setActivePhotoSubView('selected');
+    setActiveVideoSubView('selected');
+    setActiveOfflineSubView('selected');
     setLoadingState('ready');
     setIsLoading(false);
   }, []);
@@ -1427,6 +1432,7 @@ export default function App() {
   // Bulk Downloading Progress States
   const [isBulkDownloading, setIsBulkDownloading] = useState(false);
   const [bulkDownloadProgress, setBulkDownloadProgress] = useState({ current: 0, total: 0, filename: '' });
+  const [readyZipArchive, setReadyZipArchive] = useState<{ url: string; filename: string } | null>(null);
 
   // Carousel & View tracking states
   const [carouselIndex, setCarouselIndex] = useState(0);
@@ -1863,39 +1869,40 @@ export default function App() {
     const abortController = new AbortController();
     abortControllerRef.current = abortController;
 
-    const cacheKey = 'ntr_r2_media_cache_v2';
+    const cacheKey = 'ntr_r2_media_cache';
     let hasValidCache = false;
-    let isCacheStale = false;
     let activeData: any = null;
 
     React.startTransition(() => {
       setError(null);
     });
 
+    // Start with loading state
+    setIsLoading(true);
+    setLoadingState('loading');
+    setLoadingProgress(0);
+
     let targetProgress = 15; // Start with 15% target
     let currentProgress = 0;
     let interval: any = null;
 
-    const startProgressAnimation = () => {
-      if (interval) clearInterval(interval);
-      interval = setInterval(() => {
-        if (currentProgress < targetProgress) {
-          const diff = targetProgress - currentProgress;
-          if (diff > 20) {
-            currentProgress += Math.random() * 1.5 + 0.5;
-          } else if (diff > 5) {
-            currentProgress += Math.random() * 0.8 + 0.2;
-          } else {
-            currentProgress += Math.random() * 0.3 + 0.05;
-          }
-        } else if (currentProgress < 99) {
-          // Continuous smooth crawling so it NEVER gets stuck
-          currentProgress += 0.02 + Math.random() * 0.03;
+    interval = setInterval(() => {
+      if (currentProgress < targetProgress) {
+        const diff = targetProgress - currentProgress;
+        if (diff > 20) {
+          currentProgress += Math.random() * 1.5 + 0.5;
+        } else if (diff > 5) {
+          currentProgress += Math.random() * 0.8 + 0.2;
+        } else {
+          currentProgress += Math.random() * 0.3 + 0.05;
         }
-        const finalVal = Math.min(currentProgress, 99);
-        setLoadingProgress(finalVal);
-      }, 45);
-    };
+      } else if (currentProgress < 99) {
+        // Continuous smooth crawling so it NEVER gets stuck
+        currentProgress += 0.02 + Math.random() * 0.03;
+      }
+      const finalVal = Math.min(currentProgress, 99);
+      setLoadingProgress(finalVal);
+    }, 45);
 
     const isCompleteData = (d: any): boolean => {
       if (!d) return false;
@@ -2110,21 +2117,22 @@ export default function App() {
         const cached = await idbMediaCache.get(cacheKey);
         if (cached && cached.data && cached.timestamp) {
           const cacheAge = Date.now() - cached.timestamp;
-          const decompressedData = cached.compressed ? decompressR2Data(cached.data) : cached.data;
-          if (isCompleteData(decompressedData)) {
-            activeData = decompressedData;
-            setR2Data(decompressedData);
-            hasValidCache = true;
-            isCacheStale = cacheAge >= 2 * 60 * 60 * 1000;
-          } else {
-            console.info('Refreshing local cache from latest server dataset');
-            try {
-              await idbMediaCache.delete(cacheKey);
-            } catch (e) {}
+          if (cacheAge < 2 * 60 * 60 * 1000) {
+            const decompressedData = cached.compressed ? decompressR2Data(cached.data) : cached.data;
+            if (isCompleteData(decompressedData)) {
+              activeData = decompressedData;
+              setR2Data(decompressedData);
+              hasValidCache = true;
+            } else {
+              console.warn('Stale/incomplete cache found in IndexedDB, ignoring and forcing fresh fetch');
+              try {
+                await idbMediaCache.delete(cacheKey);
+              } catch (e) {}
+            }
           }
         }
       } catch (idbErr) {
-        console.info('IndexedDB cache check note, using secondary fallback:', idbErr);
+        console.warn('IndexedDB cache read failed, trying localStorage fallback:', idbErr);
       }
 
       // 2. Try reading from localStorage as fallback
@@ -2135,55 +2143,33 @@ export default function App() {
             const parsed = JSON.parse(cachedStr);
             if (parsed && parsed.data && parsed.timestamp) {
               const cacheAge = Date.now() - parsed.timestamp;
-              const decompressedData = parsed.compressed ? decompressR2Data(parsed.data) : parsed.data;
-              if (isCompleteData(decompressedData)) {
-                activeData = decompressedData;
-                setR2Data(decompressedData);
-                hasValidCache = true;
-                isCacheStale = cacheAge >= 2 * 60 * 60 * 1000;
-              } else {
-                console.info('Refreshing localStorage cache from latest server dataset');
-                try {
-                  localStorage.removeItem(cacheKey);
-                } catch (e) {}
+              if (cacheAge < 2 * 60 * 60 * 1000) {
+                const decompressedData = parsed.compressed ? decompressR2Data(parsed.data) : parsed.data;
+                if (isCompleteData(decompressedData)) {
+                  activeData = decompressedData;
+                  setR2Data(decompressedData);
+                  hasValidCache = true;
+                } else {
+                  console.warn('Stale/incomplete cache found in localStorage, ignoring and forcing fresh fetch');
+                  try {
+                    localStorage.removeItem(cacheKey);
+                  } catch (e) {}
+                }
               }
             }
           }
         } catch (lsErr) {
-          console.info('Secondary cache notice:', lsErr);
+          console.warn('Failed to parse R2 localStorage cache:', lsErr);
         }
       }
     }
 
-    if (hasValidCache && !isRescan) {
-      // Cache exists! Keep app ready immediately without showing initial loader
-      try {
-        localStorage.setItem('ntr_r2_cache_initialized', 'true');
-      } catch {}
-      React.startTransition(() => {
-        setLoadingState('ready');
-        setIsLoading(false);
-      });
-      // Preload thumbnails silently in the background
-      doPreloadStage(activeData).catch(() => {});
-      if (!isCacheStale) {
-        return;
-      }
-    } else {
-      // Cache was cleared or rescan requested
-      setIsLoading(true);
-      if (!isRescan) {
-        try {
-          localStorage.removeItem('ntr_r2_cache_initialized');
-        } catch {}
-        setLoadingState('loading');
-        setLoadingProgress(0);
-        startProgressAnimation();
-      }
+    if (hasValidCache) {
+      targetProgress = 45;
     }
 
     try {
-      if (!hasValidCache || isCacheStale) {
+      if (!hasValidCache) {
         const url = isRescan ? `${API_BASE_URL}/api/v1/media/all?rescan=true` : `${API_BASE_URL}/api/v1/media/all`;
         
         let data: any = null;
@@ -2287,24 +2273,23 @@ export default function App() {
                 data: compressed || activeData,
                 compressed: !!compressed
               });
-              localStorage.setItem('ntr_r2_cache_initialized', 'true');
             } catch (idbWriteErr) {
               console.warn('Failed to write R2 cache to IndexedDB:', idbWriteErr);
             }
           })(),
           (async () => {
             try {
-              localStorage.setItem('ntr_r2_cache_initialized', 'true');
-              const payload = JSON.stringify({
-                timestamp: Date.now(),
-                data: compressed || activeData,
-                compressed: !!compressed
-              });
-              // Only write to localStorage if payload fits comfortably within browser 5MB UTF-16 quota
-              if (payload.length < 1_500_000) {
-                localStorage.setItem(cacheKey, payload);
+              if (compressed) {
+                localStorage.setItem(cacheKey, JSON.stringify({
+                  timestamp: Date.now(),
+                  data: compressed,
+                  compressed: true
+                }));
               } else {
-                localStorage.removeItem(cacheKey);
+                localStorage.setItem(cacheKey, JSON.stringify({
+                  timestamp: Date.now(),
+                  data: activeData
+                }));
               }
             } catch (lsWriteErr: any) {
               if (lsWriteErr.name === 'QuotaExceededError' || lsWriteErr.message?.includes('quota')) {
@@ -2312,6 +2297,7 @@ export default function App() {
                   localStorage.removeItem(cacheKey);
                 } catch (e) {}
               }
+              console.warn('Failed to write secondary fallback R2 cache to localStorage:', lsWriteErr.message || lsWriteErr);
             }
           })()
         ]);
@@ -2320,12 +2306,6 @@ export default function App() {
           setR2Data(activeData);
           setError(null);
         });
-      }
-
-      if (hasValidCache && !isRescan) {
-        // Silent background refresh completed
-        setIsLoading(false);
-        return;
       }
 
       targetProgress = 45;
@@ -2337,21 +2317,19 @@ export default function App() {
       targetProgress = 100;
       if (interval) clearInterval(interval);
 
-      if (!isRescan) {
-        await new Promise<void>((resolveComplete) => {
-          let finalProgress = currentProgress;
-          const completeInterval = setInterval(() => {
-            if (finalProgress < 100) {
-              // Speed up smoothly to 100%
-              finalProgress += Math.max(2.0, (100 - finalProgress) * 0.15);
-              setLoadingProgress(Math.min(finalProgress, 100));
-            } else {
-              clearInterval(completeInterval);
-              resolveComplete();
-            }
-          }, 30);
-        });
-      }
+      await new Promise<void>((resolveComplete) => {
+        let finalProgress = currentProgress;
+        const completeInterval = setInterval(() => {
+          if (finalProgress < 100) {
+            // Speed up smoothly to 100%
+            finalProgress += Math.max(2.0, (100 - finalProgress) * 0.15);
+            setLoadingProgress(Math.min(finalProgress, 100));
+          } else {
+            clearInterval(completeInterval);
+            resolveComplete();
+          }
+        }, 30);
+      });
 
       React.startTransition(() => {
         setLoadingProgress(100);
@@ -2369,12 +2347,6 @@ export default function App() {
       }
       
       if (abortController.signal.aborted) return;
-
-      if (hasValidCache && !isRescan) {
-        if (interval) clearInterval(interval);
-        setIsLoading(false);
-        return;
-      }
 
       console.warn('Serving pre-seeded local assets (offline backup active). Error detail:', err.message);
       
@@ -2546,10 +2518,10 @@ export default function App() {
 
   // Utility to reconstruct high-resolution direct R2 public bucket URLs bypassing any proxy or optimization layers
   const reconstructDirectR2Url = (url: string, itemKey?: string): string => {
-    let finalUrl = url;
-    if (url && url.includes('wsrv.nl')) {
+    let finalUrl = url || '';
+    if (finalUrl && finalUrl.includes('wsrv.nl')) {
       try {
-        const parsed = new URL(url);
+        const parsed = new URL(finalUrl);
         const extracted = parsed.searchParams.get('url');
         if (extracted) {
           finalUrl = decodeURIComponent(extracted);
@@ -2570,19 +2542,42 @@ export default function App() {
     }
     const r2PublicUrl = extractedOrigin || "https://pub-4b8805119f7f49ae848fa1aaa57dd6d0.r2.dev";
 
-    const isMock = itemKey && (itemKey.startsWith('mock-') || itemKey.match(/^[mp]\d+$/));
-    if (itemKey && !isMock) {
+    const isMock = itemKey && (itemKey.startsWith('mock-') || itemKey.match(/^[mp]\d+$/) || itemKey.endsWith('_poster') || itemKey.endsWith('_banner'));
+    const isUrlImage = /\.(jpg|jpeg|png|webp|gif)(\?.*)?$/i.test(finalUrl);
+    const isKeyVideo = itemKey ? /\.(mp4|mkv|webm|mov|avi)$/i.test(itemKey) : false;
+
+    if (itemKey && !isMock && !(isUrlImage && isKeyVideo)) {
       const cleanKey = itemKey.replace(/^\//, "");
-      finalUrl = `${r2PublicUrl}/${cleanKey.split('/').map(encodeURIComponent).join('/')}`;
+      const safeKeyPath = cleanKey
+        .split('/')
+        .map(seg => {
+          try {
+            return encodeURIComponent(decodeURIComponent(seg));
+          } catch {
+            return encodeURIComponent(seg);
+          }
+        })
+        .join('/');
+      finalUrl = `${r2PublicUrl}/${safeKeyPath}`;
     }
 
-    if (finalUrl) {
+    if (finalUrl && finalUrl.startsWith('http')) {
       try {
         const parsed = new URL(finalUrl);
         const hostname = parsed.hostname.toLowerCase();
         const isR2CustomDomain = parsed.pathname.includes('/ntrfilmography/');
+        const encodedPathname = parsed.pathname
+          .split('/')
+          .map(seg => {
+            try {
+              return encodeURIComponent(decodeURIComponent(seg));
+            } catch {
+              return encodeURIComponent(seg);
+            }
+          })
+          .join('/');
         if (hostname.includes('r2.dev') || hostname.includes('unsplash.com') || isR2CustomDomain) {
-          finalUrl = `${parsed.protocol}//${parsed.host}${parsed.pathname}`;
+          finalUrl = `${parsed.protocol}//${parsed.host}${encodedPathname}`;
         }
       } catch (e) {
         // fallback
@@ -2591,7 +2586,7 @@ export default function App() {
     return finalUrl;
   };
 
-  // Direct single file downloader (CORS-safe browser download helper)
+  // Direct single file downloader (Safari & cross-browser compatible attachment download helper)
   const triggerSingleDownload = async (url: string, fallbackFilename: string, itemKey?: string) => {
     triggerHaptic('double');
     
@@ -2600,7 +2595,10 @@ export default function App() {
 
     // Determine safe, clean filename
     let filename = fallbackFilename;
-    const sourcePath = itemKey || finalUrl;
+    const isUrlImage = /\.(jpg|jpeg|png|webp|gif)(\?.*)?$/i.test(finalUrl);
+    const isKeyVideo = itemKey ? /\.(mp4|mkv|webm|mov|avi)$/i.test(itemKey) : false;
+    const effectiveItemKey = (isUrlImage && isKeyVideo) ? '' : (itemKey || '');
+    const sourcePath = effectiveItemKey || finalUrl;
     try {
       if (sourcePath.startsWith('http://') || sourcePath.startsWith('https://')) {
         const parsed = new URL(sourcePath);
@@ -2642,17 +2640,22 @@ export default function App() {
     
     try {
       // Point directly to our streaming download proxy endpoint
-      const downloadUrl = `${API_BASE_URL}/api/v1/media/download?url=${encodeURIComponent(finalUrl)}&key=${encodeURIComponent(itemKey || '')}&filename=${encodeURIComponent(filename)}`;
+      const downloadUrl = `${API_BASE_URL}/api/v1/media/download?url=${encodeURIComponent(finalUrl)}&key=${encodeURIComponent(effectiveItemKey)}&filename=${encodeURIComponent(filename)}`;
       
       const link = document.createElement('a');
       link.href = downloadUrl;
+      link.style.display = 'none';
       // Force download attribute
       link.setAttribute('download', filename);
       document.body.appendChild(link);
       link.click();
-      document.body.removeChild(link);
+      // Delay DOM removal so Safari/WebKit finishes asynchronous download handoff
+      setTimeout(() => {
+        if (link.parentNode) {
+          document.body.removeChild(link);
+        }
+      }, 3000);
       
-      // Since it's a native streaming trigger, the browser manages the download. We can show a success toast.
       setTimeout(() => {
         showToast('Download initiated! Check your browser downloads.', 'success');
       }, 1500);
@@ -2660,15 +2663,19 @@ export default function App() {
       console.warn('[SINGLE DOWNLOAD] Native proxy download trigger failed, falling back to direct link:', err);
       showToast('Opening direct stream link...', 'info');
       
-      // Fallback: Open finalUrl directly in a new window/tab to bypass proxy entirely
       const link = document.createElement('a');
       link.href = finalUrl;
       link.target = '_blank';
       link.rel = 'noopener noreferrer';
+      link.style.display = 'none';
       link.setAttribute('download', filename);
       document.body.appendChild(link);
       link.click();
-      document.body.removeChild(link);
+      setTimeout(() => {
+        if (link.parentNode) {
+          document.body.removeChild(link);
+        }
+      }, 3000);
     }
   };
 
@@ -3542,7 +3549,7 @@ export default function App() {
               if (!response.ok) throw new Error(`Direct fetch failed with status ${response.status}`);
             } catch (directErr) {
               console.warn(`Direct fetch failed for item ${item.title}, trying proxy fallback...`, directErr);
-              const proxyUrl = `/api/v1/media/download?url=${encodeURIComponent(directUrl)}&key=${encodeURIComponent(item.key || '')}`;
+              const proxyUrl = `${API_BASE_URL}/api/v1/media/download?url=${encodeURIComponent(directUrl)}&key=${encodeURIComponent(item.key || '')}`;
               response = await fetch(proxyUrl);
               if (!response.ok) throw new Error(`Proxy fallback fetch failed: ${response.status}`);
             }
@@ -3579,19 +3586,40 @@ export default function App() {
       await Promise.all(workers);
 
       setBulkDownloadProgress(prev => ({ ...prev, filename: 'Compressing archive...' }));
-      const zipBlob = await zip.generateAsync({ type: 'blob' });
-      
+      const zipBlob = await zip.generateAsync({ type: 'blob', mimeType: 'application/zip' });
+      const zipFilename = `NTR_Filmography_${currentView}_BulkArchive.zip`;
+      const safeBlob = new Blob([zipBlob], { type: 'application/octet-stream' });
+      const blobUrl = URL.createObjectURL(safeBlob);
+
+      const isSafari = typeof navigator !== 'undefined' && /^(?!.*chrome|.*crios|.*fxios|.*edgios|.*opr).*safari/i.test(navigator.userAgent);
+      const gestureExpired = isSafari && (typeof (navigator as any).userActivation !== 'undefined' ? !(navigator as any).userActivation.isActive : true);
+
       const link = document.createElement('a');
-      link.href = URL.createObjectURL(zipBlob);
-      link.download = `NTR_Filmography_${currentView}_BulkArchive.zip`;
+      link.href = blobUrl;
+      link.download = zipFilename;
+      link.style.display = 'none';
       document.body.appendChild(link);
       link.click();
-      document.body.removeChild(link);
+      setTimeout(() => {
+        if (link.parentNode) {
+          document.body.removeChild(link);
+        }
+        if (!gestureExpired) {
+          URL.revokeObjectURL(blobUrl);
+        }
+      }, 10000);
+
+      if (gestureExpired) {
+        setReadyZipArchive({ url: blobUrl, filename: zipFilename });
+        setBulkDownloadProgress(prev => ({ ...prev, filename: 'Archive Ready to Save' }));
+      } else {
+        setIsBulkDownloading(false);
+        showToast('Successfully downloaded ZIP archive!', 'success');
+      }
     } catch (err: any) {
       console.error('Failed to bundle assets:', err);
-      showToast('Failed to generate bulk ZIP folder. Individual download remains fully functional.', 'error');
-    } finally {
       setIsBulkDownloading(false);
+      showToast('Failed to generate bulk ZIP folder. Individual download remains fully functional.', 'error');
     }
   };
 
@@ -3630,7 +3658,7 @@ export default function App() {
             transition={{ duration: 0.6, ease: "easeInOut" }}
             className="fixed inset-0 z-50 bg-black flex flex-col items-center justify-center p-6 select-none"
           >
-            <div className="max-w-md w-full flex flex-col items-center gap-7 sm:gap-8 text-center">
+            <div className="max-w-md w-full flex flex-col items-center gap-8">
               
               {/* Title */}
               <div className="text-center">
@@ -3639,24 +3667,38 @@ export default function App() {
                 </h2>
               </div>
 
-              {/* Loading Progress Bar */}
-              <div className="w-full h-1.5 bg-zinc-900 rounded-full overflow-hidden">
-                <motion.div
-                  className="h-full bg-gradient-to-r from-amber-600 via-amber-500 to-yellow-400 rounded-full"
-                  initial={{ width: '0%' }}
-                  animate={{ width: `${Math.min(Math.max(loadingProgress, 0), 100)}%` }}
-                  transition={{ duration: 0.1, ease: "linear" }}
-                />
+              {/* Dynamic Running Track & Loading Line */}
+              <div className="w-full relative py-2">
+                {/* Background Track Line */}
+                <div className="w-full bg-zinc-900/80 border border-zinc-800/30 rounded-full h-1.5 overflow-hidden relative">
+                  {/* Active Fills Progress Bar */}
+                  <div 
+                    className="bg-gradient-to-r from-amber-600 to-amber-400 h-full rounded-full transition-all duration-300 shadow-[0_0_12px_rgba(245,158,11,0.8)]"
+                    style={{ width: `${Math.min(loadingProgress, 100)}%` }}
+                  />
+                </div>
               </div>
 
-              {/* Enter Button */}
-              <button
-                onClick={handleEnterApp}
-                className="px-6 py-2.5 rounded-xl bg-amber-500/80 hover:bg-amber-500 border border-amber-400/60 text-black font-black text-xs uppercase tracking-wider flex items-center gap-2 shadow-[0_0_25px_rgba(245,158,11,0.45)] hover:shadow-[0_0_35px_rgba(245,158,11,0.7)] transition-all duration-300 active:scale-95 cursor-pointer"
-              >
-                <span>ENTER</span>
-                <ArrowRight className="w-3.5 h-3.5 stroke-[2.5]" />
-              </button>
+              {/* Progress text that converts into Enter Button once 100% complete */}
+              <div className="text-center flex flex-col items-center justify-center w-full min-h-[48px]">
+                {loadingProgress < 100 ? (
+                  <div className="font-mono font-bold text-amber-500/80 text-xs tracking-widest animate-pulse">
+                    {Math.round(loadingProgress)}% COMPLETED
+                  </div>
+                ) : (
+                  <motion.button
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    onClick={handleEnterApp}
+                    className="py-2 px-5 bg-gradient-to-r from-amber-500 via-amber-400 to-amber-500 hover:from-amber-400 hover:to-amber-500 text-zinc-950 font-black tracking-widest text-xs uppercase rounded-lg shadow-[0_0_18px_rgba(245,158,11,0.5)] hover:shadow-[0_0_24px_rgba(245,158,11,0.8)] border border-amber-300 transition-all flex items-center justify-center gap-1.5 cursor-pointer group active:scale-95"
+                  >
+                    <span className="text-zinc-950 font-extrabold tracking-widest">ENTER</span>
+                    <ArrowRight className="w-3.5 h-3.5 translate-x-0 group-hover:translate-x-0.5 transition-transform stroke-[2.5] text-zinc-950" />
+                  </motion.button>
+                )}
+              </div>
 
             </div>
           </motion.div>
@@ -4992,20 +5034,17 @@ export default function App() {
 
                               <button
                                 onClick={() => {
-                                  let targetKey = selectedMovie.movieUrl || '';
+                                  let targetKey = selectedMovie.id || '';
                                   let targetUrl = selectedMovie.movieUrl || '';
                                   let targetFilename = selectedMovie.title ? `${selectedMovie.title.replace(/[^a-zA-Z0-9]/g, '_')}.mp4` : 'movie.mp4';
 
                                   const isAdhurs = selectedMovie.title?.toLowerCase().includes('adhurs');
-                                  if (isAdhurs) {
+                                  if (isAdhurs && !selectedMovie.id) {
                                     targetKey = 'Movies/Adhurs (2010).mp4';
                                     targetUrl = 'https://pub-4b8805119f7f49ae848fa1aaa57dd6d0.r2.dev/Movies/Adhurs%20(2010).mp4';
                                     targetFilename = 'Adhurs (2010).mp4';
-                                  } else if (selectedMovie.id) {
-                                    targetKey = selectedMovie.id;
                                   }
 
-                                  showToast(`Download started for "${selectedMovie.title}"`, 'success');
                                   triggerSingleDownload(targetUrl, targetFilename, targetKey);
                                 }}
                                 className="w-full py-3 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800/80 text-white rounded-xl text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 transition-all active:scale-95 shadow-md select-none"
@@ -6471,19 +6510,23 @@ export default function App() {
         <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
           <div className="bg-zinc-900 border border-zinc-800/80 rounded-3xl p-6 md:p-8 max-w-md w-full shadow-2xl flex flex-col items-center text-center animate-scale-up">
             <div className="relative mb-6">
-              <Loader2 className="w-16 h-16 text-amber-500 animate-spin" />
+              <Loader2 className={`w-16 h-16 text-amber-500 ${readyZipArchive ? '' : 'animate-spin'}`} />
               <FileDown className="w-6 h-6 text-white absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
             </div>
 
-            <h3 className="text-xl font-black text-white uppercase tracking-tight mb-2">Compiling Bulk ZIP Archive</h3>
+            <h3 className="text-xl font-black text-white uppercase tracking-tight mb-2">
+              {readyZipArchive ? 'ZIP Archive Ready' : 'Compiling Bulk ZIP Archive'}
+            </h3>
             <p className="text-xs text-zinc-400 max-w-sm mb-6 leading-relaxed">
-              We are packaging and zipping your visible cloud assets into a single clean bundle. The download will start automatically.
+              {readyZipArchive
+                ? 'Your ZIP archive is ready. Tap Save Archive below to download it to your device.'
+                : 'We are packaging and zipping your visible cloud assets into a single clean bundle. The download will start automatically.'}
             </p>
 
             <div className="w-full bg-zinc-950 border border-zinc-900 rounded-full h-3.5 mb-2 overflow-hidden p-0.5">
               <div 
                 className="bg-amber-500 h-full rounded-full transition-all duration-300"
-                style={{ width: `${(bulkDownloadProgress.current / bulkDownloadProgress.total) * 100}%` }}
+                style={{ width: `${bulkDownloadProgress.total > 0 ? (bulkDownloadProgress.current / bulkDownloadProgress.total) * 100 : 0}%` }}
               />
             </div>
 
@@ -6491,12 +6534,38 @@ export default function App() {
               <span>{bulkDownloadProgress.filename}</span>
               <span>{bulkDownloadProgress.current} / {bulkDownloadProgress.total} Files</span>
             </div>
+
+            {readyZipArchive && (
+              <a
+                href={readyZipArchive.url}
+                download={readyZipArchive.filename}
+                onClick={() => {
+                  const archiveUrl = readyZipArchive.url;
+                  setTimeout(() => {
+                    URL.revokeObjectURL(archiveUrl);
+                  }, 10000);
+                  setReadyZipArchive(null);
+                  setIsBulkDownloading(false);
+                  showToast('ZIP archive download started!', 'success');
+                }}
+                className="w-full py-3 mb-2 bg-amber-500 hover:bg-amber-400 text-zinc-950 text-xs font-black uppercase tracking-wider rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-amber-500/20 no-underline cursor-pointer"
+              >
+                <Download className="w-4 h-4" />
+                <span>Save ZIP Archive</span>
+              </a>
+            )}
             
             <button
-              onClick={() => setIsBulkDownloading(false)}
+              onClick={() => {
+                if (readyZipArchive) {
+                  URL.revokeObjectURL(readyZipArchive.url);
+                  setReadyZipArchive(null);
+                }
+                setIsBulkDownloading(false);
+              }}
               className="px-4 py-2 bg-zinc-850 hover:bg-zinc-800 text-zinc-400 hover:text-white text-xs font-bold uppercase tracking-wider rounded-xl border border-zinc-800 transition-all mt-2"
             >
-              Cancel Bulk Download
+              {readyZipArchive ? 'Close' : 'Cancel Bulk Download'}
             </button>
           </div>
         </div>
